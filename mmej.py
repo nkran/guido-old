@@ -1,19 +1,19 @@
 import re
-import Bio
 import itertools
+import math
 
 # TODO
 # - look in negative strand
-# - score patterns, microhomology, out-of-frame
+# - microhomology, out-of-frame
 
-#sequence
+# Sequence
 seq = 'CGAGCGCGGGGCAGGTGCCCGCTGGAACTCGCGCCTCGCAGCGCTGGGCGGCCGGGGCCGGGCAGGGTAGTGCGGGAAGATCGGGGTCTGGGGTCGGTGCCGGCGGGACTCCGAAAGGAGGGAGCCGGG'
 max_flanking_length = 40
 min_flanking_length = 15
-
+length_weight = 20.0
 
 # Find NGG motives (PAM sites)
-# Keep only those which are more than 30 bp downstream
+# Keep only those which are more than 30 bp downstream m
 def find_breaks(sequence):
     breaks_list = []
 
@@ -69,6 +69,8 @@ def find_microhomologies(left_seq, right_seq):
 def simulate_end_joining(breaks_list):
 
     for i, item in enumerate(breaks_list):
+
+        # TODO: remove and enable all breaks
         if i == 0:
             sequence = item['seq']
             br = item['br']
@@ -88,23 +90,42 @@ def simulate_end_joining(breaks_list):
                 left_positions = [m.start() for m in p.finditer(left_seq)]
                 right_positions = [m.start() for m in p.finditer(right_seq)]
 
+                # GC count for pattern
+                pattern_GC = len(re.findall('G', pattern)) + len(re.findall('C', pattern))
+
                 # get combinations
                 pos_combinations = list(itertools.product(left_positions, right_positions))
 
+                # generate microhomology for every combination
                 for combination in pos_combinations:
 
+                    # left side
                     left_seq_pos = combination[0]
                     left_deletion_length = len(left_seq) - left_seq_pos
 
+                    # right side
                     right_seq_pos = combination[1]
                     right_deletion_length = right_seq_pos
 
-                    print 'microhomology:', pattern
-                    print 'wild type:\n', sequence
-                    print left_seq[:left_seq_pos] + '-' * left_deletion_length + '+' * right_deletion_length + (right_seq[right_seq_pos:])
-                    print '\n'
+                    # deletion length and sequence
+                    deletion_length = left_deletion_length + right_deletion_length
+                    deletion_seq = left_seq[left_seq_pos:] + right_seq[:right_seq_pos]
 
+                    # score pattern
+                    length_factor =  round(1 / math.exp((deletion_length) / (length_weight)), 3)
+                    score_pattern = 100 * length_factor * ((len(pattern) - pattern_GC) + (pattern_GC * 2))
 
+                    # frame shift
+                    if deletion_length % 3 == 0:
+                        frame_shift = "-"
+                    else:
+                        frame_shift = "+"
+
+                    # output
+                    print left_seq[:left_seq_pos] + '-' * left_deletion_length + '+' * right_deletion_length + (right_seq[right_seq_pos:]),
+                    print pattern, deletion_length, pattern_GC, frame_shift, score_pattern
+
+# run
 break_dict = find_breaks(seq)
 simulate_end_joining(break_dict)
 
