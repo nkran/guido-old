@@ -1,52 +1,41 @@
+from __future__ import print_function
+import os
 import re
 import math
 import argparse
 import itertools
+import vcf
 from Bio.Seq import Seq
+from Bio import SeqIO
+
 
 parser = argparse.ArgumentParser(description='Microhomology predictor.')
-parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence.')
+parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence (TXT or FASTA).')
+parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
+parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
 parser.add_argument('--good-guides', '-g', dest='good_guides', help='List of good guide sequences.')
 parser.add_argument('--bad-guides', '-b', dest='bad_guides', help='List of bad guide sequences.')
 parser.add_argument('--max-flanking', '-M', dest='max_flanking_length', help='Max length of flanking region.', default=40)
 parser.add_argument('--min-flanking', '-m', dest='min_flanking_length', help='Min length of flanking region.', default=25)
 parser.add_argument('--length-weight', '-w', dest='length_weight', help='Length weight - used in scoring.', default=20.0)
-parser.add_argument('--rank', help="Output rangking of guides.", default=True)
+parser.add_argument('--n-patterns', '-p', dest='n_patterns', help='Number of MH patterns used in guide evaluation.', default=5)
+parser.add_argument('--output-folder', '-o', dest='output_folder', help="Output folder.")
 
 args = parser.parse_args()
-
-# TODO
-# -- remove cut sites with known off target effects
-# -- specify custom PAM sequence
-# -- allow different outputs
-# -- handle FASTA as sequence input
-
-# sequence
-max_flanking_length = args.max_flanking_length
-min_flanking_length = args.min_flanking_length
-length_weight = args.length_weight
-
-with open(args.sequence, 'r') as f:
-    seq = f.readline().strip().upper()
-
-with open(args.good_guides, 'r') as f:
-    guides_ok = [g.strip() for g in f.readlines()]
-
-with open(args.bad_guides, 'r') as f:
-    guides_bad = [g.strip() for g in f.readlines()]
 
 
 # find NGG motives (PAM sites)
 # keep only those which are more than 30 bp downstream m
-def find_breaks(sequence):
+def find_breaks(sequence, region):
     breaks_list = []
 
-    pams = [m.start() for m in re.finditer(r'GG', sequence) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(sequence)]
+    pams = [m.start() for m in re.finditer(r'(?=([ACTG]GG))', sequence) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(sequence)]
+
     for pam in pams:
 
         break_dict = {}
 
-        br = pam - 4
+        br = pam - 3
         left = br - max_flanking_length
         right = br + max_flanking_length
 
@@ -56,6 +45,11 @@ def find_breaks(sequence):
         break_dict['br'] = br - left
         break_dict['seq'] = sequence[left:right]
         break_dict['pam'] = sequence[pam:pam+3]
+
+        break_dict['br_abs'] = region[1] + br
+        break_dict['chr'] = region[0]
+        break_dict['ref_start'] = region[1]
+        break_dict['ref_end'] = region[2]
 
         breaks_list.append(break_dict)
 
@@ -94,6 +88,7 @@ def simulate_end_joining(breaks_list):
         sequence = item['seq']
         br = item['br']
         guide = sequence[br-17:br+6]
+        guide_loc = item['chr'] + ':' + str(item['br_abs'] - 17) + '-' + str(item['br_abs'] + 6)
 
         # create list for storing combinations
         combination_list = []
@@ -159,6 +154,7 @@ def simulate_end_joining(breaks_list):
                 combination_dict['frame_shift'] = frame_shift
                 combination_dict['guide'] = guide
                 combination_dict['sequence'] = sequence
+                combination_dict['guide_loc'] = guide_loc
 
                 # add to list
                 combination_list.append(combination_dict)
@@ -207,36 +203,50 @@ def group_by_deletion(pattern_list, sorting_field = 'score'):
 
         del_group = {}
         del_group['score'] = 0
-
+        del_group['pattern'] = []
+        del_group['guide'] = set()
         for i, combination in enumerate(group):
+            del_group['pattern'].append(combination['pattern'])
             del_group['score'] += combination['pattern_score']
+            del_group['guide'].add(combination['guide'])
 
         del_group['count'] = i + 1
         del_group['deletion'] = deletion
-
+        del_group['deletion_len'] = len(deletion)
         deletion_groups.append(del_group)
 
-    # for del_group in sorted(deletion_groups, key=lambda x: x[sorting_field], reverse = True):
-    #     continue
-    #     # print del_group['score'], '\t', del_group['count'], '\t', del_group['deletion']
+    for del_group in sorted(deletion_groups, key=lambda x: del_group['deletion_len']):
+        print(del_group['score'], '\t', del_group['count'], '\t', del_group['deletion_len'], '\t', del_group['deletion'], '\t', del_group['pattern'], '\t', del_group['guide'])
 
     return deletion_groups
 
 # evaluate guides in specified locus
-def evaluate_guides(cut_sites, guides_ok, guides_bad, strand, n_patterns):
+def evaluate_guides(cut_sites, guides_ok, guides_bad, strand, n_patterns, var_positions):
 
     guides = []
 
     for pattern_list in cut_sites:
-
         guide = {}
-
         score = 0
         oof_score = 0
 
         # sort by pattern score
         sorted_pattern_list = sorted(pattern_list, key=lambda x: x['pattern_score'], reverse=True)[:n_patterns]
         guide_seq = sorted_pattern_list[0]['guide']
+        guide_loc = sorted_pattern_list[0]['guide_loc']
+
+        guide_start = int(guide_loc.split(':')[1].split('-')[0])
+        guide_end = int(guide_loc.split(':')[1].split('-')[1])
+
+        # calculate SNP penalty
+        snp_score = 0
+
+        if var_positions:
+            for pos in var_positions:
+                if guide_start <= pos and guide_end >= pos:
+                    snp_score += 1
+        else:
+            print("dsa")
 
         # calculate scores for MH in cut site
         for pattern_dict in sorted_pattern_list:
@@ -248,7 +258,10 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, strand, n_patterns):
         complete_score = oof_score / score * 100
 
         guide['seq'] = guide_seq
+        guide['guide_loc'] = guide_loc
         guide['score'] = complete_score
+        guide['snp_score'] = snp_score
+        guide['sum_score'] = score
         guide['strand'] = strand
         guide['patterns'] = sorted_pattern_list
 
@@ -265,38 +278,115 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, strand, n_patterns):
     return guides
 
 
-# run ---------------------
+# TODO
+# -- remove cut sites with known off target effects
+# -- specify custom PAM sequence
+# -- allow different outputs
+
+# sequence
+max_flanking_length = int(args.max_flanking_length)
+min_flanking_length = int(args.min_flanking_length)
+length_weight = args.length_weight
+
+# sequence input -------------------------------------------------------
+if args.sequence:
+    try:
+        record = SeqIO.parse(args.sequence, "fasta").next()
+        print('Reading FASTA', args.sequence)
+        seq = str(record.seq.upper())
+    except:
+        print('Reading text sequence', args.sequence)
+        with open(args.sequence, 'r') as f:
+            seq = f.readline().strip().upper()
+
+# sequence input from reference genome ---------------------------------
+if args.region:
+    print('Using AgamP4 sequence')
+
+    records = SeqIO.parse("references/AgamP4.fa", "fasta")
+    reference = {}
+
+    chromosome = args.region.split(':')[0]
+    start = int(args.region.split(':')[1].split('-')[0])
+    end = int(args.region.split(':')[1].split('-')[1])
+
+    for record in records:
+        reference[record.id] = record
+
+    seq = str(reference[chromosome].seq[start:end].upper())
+    region = (chromosome, start, end)
+else:
+    region = ('seq', 0, 0)
+
+# good guides ----------------------------------------------------------
+if args.good_guides:
+    with open(args.good_guides, 'r') as f:
+        guides_ok = [g.strip() for g in f.readlines()]
+else:
+    guides_ok = []
+
+# bad guides -----------------------------------------------------------
+if args.bad_guides:
+    with open(args.bad_guides, 'r') as f:
+        guides_bad = [g.strip() for g in f.readlines()]
+else:
+    guides_bad = []
+
+# variants input -------------------------------------------------------
+if args.variants and args.region:
+    with open(args.variants, 'r') as vcf_file:
+        vcf_reader = vcf.Reader(vcf_file)
+
+        print('Reading VCF for region {}:{}-{}'.format(chromosome, start, end))
+        var_positions = [v.POS for v in vcf_reader.fetch(chromosome, start, end)]
+
+
+# ----------------------------------------------------------------------
+# run
+# ----------------------------------------------------------------------
 
 # positive strand
-breaks_list_pos = find_breaks(seq)
+breaks_list_pos = find_breaks(seq, region)
 pattern_list_pos = simulate_end_joining(breaks_list_pos)
 
 # negative strand
-revco_seq = Seq(seq).reverse_complement()
-
-breaks_list_neg = find_breaks(str(revco_seq))
+revco_seq = str(Seq(seq).reverse_complement())
+breaks_list_neg = find_breaks(revco_seq, region)
 pattern_list_neg = simulate_end_joining(breaks_list_neg)
 
-guides_pos = evaluate_guides(pattern_list_pos, guides_ok, guides_bad, "+", 10)
-guides_neg = evaluate_guides(pattern_list_neg, guides_ok, guides_bad, "-", 10)
+# evaluate guides
+guides_pos = evaluate_guides(pattern_list_pos, guides_ok, guides_bad, "+", int(args.n_patterns), var_positions)
+guides_neg = evaluate_guides(pattern_list_neg, guides_ok, guides_bad, "-", int(args.n_patterns), var_positions)
 
+# merge guides from positive and negative strand
 guides_all = guides_neg + guides_pos
 
-if args.rank:
-    for guide_dict in sorted(guides_all, key=lambda x: x['score'], reverse=True):
+# output
+if args.output_folder:
 
-        a = guide_dict['patterns'][0]
+    # create output dir if it doesn't exist
+    if not os.path.exists(args.output_folder):
+        os.makedirs(args.output_folder)
 
-        # print a['sequence']
+    # print the list of guides
+    with open(args.output_folder + '/guides_list_' + str(args.n_patterns) + '.txt', 'w') as f:
 
-        # print a['left_seq'] + len(a['deletion_seq'])*'-' + a['right_seq']
-        # print a['right_seq_position'] * "+"
-        # print '\n\n'
+        for guide_dict in sorted(guides_all, key=lambda x: (x['score'], x['sum_score']), reverse=True):
+            a = guide_dict['patterns'][0]
 
-        print guide_dict['seq'], '\t', guide_dict['strand'], '\t', guide_dict['status'], '\t', guide_dict['score']
-        for pattern in guide_dict['patterns']:
+            mmej_frames = ('\t'.join('{}'.format(pattern['frame_shift']) for pattern in guide_dict['patterns']))
 
-            print pattern['pattern_score'], '\t', len(pattern['deletion_seq']), '\t', pattern['frame_shift'], '\t', pattern['pattern'], '\t', pattern['deletion_seq']
+            print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['seq'], guide_dict['guide_loc'], guide_dict['strand'], guide_dict['status'], guide_dict['score'], guide_dict['sum_score'], guide_dict['patterns'][0]['pattern_score'], guide_dict['snp_score'], mmej_frames), file = f)
 
-        print "...................................................................."
+    # print the list of guides and their MH patterns
+    with open(args.output_folder + '/guides_list_mh_' + str(args.n_patterns) + '.txt', 'w') as f:
+
+        for guide_dict in sorted(guides_all, key=lambda x: (x['score'], x['sum_score']), reverse=True):
+            a = guide_dict['patterns'][0]
+            print("{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['seq'], guide_dict['guide_loc'], guide_dict['strand'], guide_dict['status'], guide_dict['score'], guide_dict['sum_score']), file = f)
+
+            for pattern in guide_dict['patterns']:
+                print("{}\t{}\t{}\t{}\t{}".format(pattern['pattern_score'], len(pattern['deletion_seq']), pattern['frame_shift'], pattern['pattern'], pattern['deletion_seq']), file = f)
+
+            print("....................................................................", file = f)
 
