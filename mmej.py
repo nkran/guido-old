@@ -46,6 +46,8 @@ def find_breaks(sequence, region):
         break_dict['seq'] = sequence[left:right]
         break_dict['pam'] = sequence[pam:pam+3]
 
+        break_dict['left_flank'] = sequence[left]
+
         break_dict['br_abs'] = region[1] + br
         break_dict['chr'] = region[0]
         break_dict['ref_start'] = region[1]
@@ -55,6 +57,30 @@ def find_breaks(sequence, region):
 
     return breaks_list
 
+def extract_flanks(chr_seq, break_dict_list):
+
+    break_dicts = []
+
+    for break_dict in break_dict_list:
+
+        br = break_dict['br_abs']
+
+        if br - 2000 > 0:
+            left_flank_start = br - 2000
+        else:
+            left_flank_start = 0
+
+        if br + 2000 < len(chr_seq):
+            right_flank_end = br + 2000
+        else:
+            right_flank_end = len(chr_seq)
+
+        break_dict['left_flank_seq'] = chr_seq[left_flank_start:br]
+        break_dict['right_flank_seq'] = chr_seq[br:right_flank_end]
+
+        break_dicts.append(break_dict)
+
+    return break_dicts
 
 # start with predifined k-mer length and extend it until it finds more
 # than one match in sequence
@@ -85,17 +111,24 @@ def simulate_end_joining(breaks_list):
 
     for i, item in enumerate(breaks_list):
 
-        sequence = item['seq']
+        cut_site = {}
+
         br = item['br']
-        guide = sequence[br-17:br+6]
-        guide_loc = item['chr'] + ':' + str(item['br_abs'] - 17) + '-' + str(item['br_abs'] + 6)
+        seq = item['seq']
+
+        cut_site['sequence'] = item['seq']
+        cut_site['br'] = item['br']
+        cut_site['guide'] = seq[br-17:br+6]
+        cut_site['guide_loc'] = item['chr'] + ':' + str(item['br_abs'] - 17) + '-' + str(item['br_abs'] + 6)
+        cut_site['left_flank_seq'] = item['left_flank_seq']
+        cut_site['right_flank_seq'] = item['right_flank_seq']
 
         # create list for storing combinations
-        combination_list = []
+        cut_site['combination_list'] = []
 
         # split sequence at the break
-        left_seq = sequence[:br]
-        right_seq = sequence[br:]
+        left_seq = seq[:br]
+        right_seq = seq[br:]
 
         # find patterns in both sequences
         patterns = find_microhomologies(left_seq, right_seq)
@@ -152,17 +185,14 @@ def simulate_end_joining(breaks_list):
                 combination_dict['pattern_score'] = pattern_score
                 combination_dict['deletion_seq'] = deletion_seq
                 combination_dict['frame_shift'] = frame_shift
-                combination_dict['guide'] = guide
-                combination_dict['sequence'] = sequence
-                combination_dict['guide_loc'] = guide_loc
 
                 # add to list
-                combination_list.append(combination_dict)
+                cut_site['combination_list'].append(combination_dict)
 
         # remove duplicates and sub microhomologies
         combination_list_filtered = []
 
-        combination_list = [dict(t) for t in set([tuple(sorted(combination_dict.items())) for combination_dict in combination_list])]
+        combination_list = [dict(t) for t in set([tuple(sorted(combination_dict.items())) for combination_dict in cut_site['combination_list']])]
         for combination_dict in sorted(combination_list, key=lambda x: x['pattern_score']):
 
             pass_array = []
@@ -189,7 +219,9 @@ def simulate_end_joining(breaks_list):
             if all(pass_array):
                 combination_list_filtered.append(combination_dict)
 
-        cut_sites.append(combination_list_filtered)
+        cut_site['combination_list'] = combination_list_filtered
+
+        cut_sites.append(cut_site)
 
     return cut_sites
 
@@ -225,15 +257,15 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, strand, n_patterns, var_po
 
     guides = []
 
-    for pattern_list in cut_sites:
+    for cut_site in cut_sites:
         guide = {}
         score = 0
         oof_score = 0
 
         # sort by pattern score
-        sorted_pattern_list = sorted(pattern_list, key=lambda x: x['pattern_score'], reverse=True)[:n_patterns]
-        guide_seq = sorted_pattern_list[0]['guide']
-        guide_loc = sorted_pattern_list[0]['guide_loc']
+        sorted_pattern_list = sorted(cut_site['combination_list'], key=lambda x: x['pattern_score'], reverse=True)[:n_patterns]
+        guide_seq = cut_site['guide']
+        guide_loc = cut_site['guide_loc']
 
         guide_start = int(guide_loc.split(':')[1].split('-')[0])
         guide_end = int(guide_loc.split(':')[1].split('-')[1])
@@ -246,7 +278,7 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, strand, n_patterns, var_po
                 if guide_start <= pos and guide_end >= pos:
                     snp_score += 1
         else:
-            print("dsa")
+            print("No variants")
 
         # calculate scores for MH in cut site
         for pattern_dict in sorted_pattern_list:
@@ -264,6 +296,8 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, strand, n_patterns, var_po
         guide['sum_score'] = score
         guide['strand'] = strand
         guide['patterns'] = sorted_pattern_list
+        guide['left_flank_seq'] = cut_site['left_flank_seq']
+        guide['right_flank_seq'] = cut_site['right_flank_seq']
 
         # check if guide is ok - external checking
         if guide_seq in guides_ok:
@@ -314,6 +348,8 @@ if args.region:
         reference[record.id] = record
 
     seq = str(reference[chromosome].seq[start:end].upper())
+    chr_seq = str(reference[chromosome].seq.upper())
+
     region = (chromosome, start, end)
 else:
     region = ('seq', 0, 0)
@@ -345,13 +381,19 @@ if args.variants and args.region:
 # run
 # ----------------------------------------------------------------------
 
+# neg strand
+revco_seq = str(Seq(seq).reverse_complement())
+revco_chr_seq = str(Seq(chr_seq).reverse_complement())
+
 # positive strand
 breaks_list_pos = find_breaks(seq, region)
-pattern_list_pos = simulate_end_joining(breaks_list_pos)
-
-# negative strand
-revco_seq = str(Seq(seq).reverse_complement())
 breaks_list_neg = find_breaks(revco_seq, region)
+
+if args.region:
+    breaks_list_pos = extract_flanks(chr_seq, breaks_list_pos)
+    breaks_list_neg = extract_flanks(chr_seq, breaks_list_neg)
+
+pattern_list_pos = simulate_end_joining(breaks_list_pos)
 pattern_list_neg = simulate_end_joining(breaks_list_neg)
 
 # evaluate guides
@@ -371,18 +413,17 @@ if args.output_folder:
     # print the list of guides
     with open(args.output_folder + '/guides_list_' + str(args.n_patterns) + '.txt', 'w') as f:
 
-        for guide_dict in sorted(guides_all, key=lambda x: (x['score'], x['sum_score']), reverse=True):
-            a = guide_dict['patterns'][0]
+        print("guide_sequence\tgenomic_location\tstrand\toff_target_analysis\tMMEJ_score\tMMEJ_sum_score\tMMEJ_top_score\tMMEJ_out_of_frame_del\tguide_snp_count\tleft_flank\tright_flank", file = f)
 
+        for guide_dict in sorted(guides_all, key=lambda x: (x['score'], x['sum_score']), reverse=True):
             mmej_frames = ('\t'.join('{}'.format(pattern['frame_shift']) for pattern in guide_dict['patterns']))
 
-            print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['seq'], guide_dict['guide_loc'], guide_dict['strand'], guide_dict['status'], guide_dict['score'], guide_dict['sum_score'], guide_dict['patterns'][0]['pattern_score'], guide_dict['snp_score'], mmej_frames), file = f)
+            print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['seq'], guide_dict['guide_loc'], guide_dict['strand'], guide_dict['status'], guide_dict['score'], guide_dict['sum_score'], guide_dict['patterns'][0]['pattern_score'], mmej_frames, guide_dict['snp_score'], guide_dict['left_flank_seq'], guide_dict['right_flank_seq']), file = f)
 
     # print the list of guides and their MH patterns
     with open(args.output_folder + '/guides_list_mh_' + str(args.n_patterns) + '.txt', 'w') as f:
 
         for guide_dict in sorted(guides_all, key=lambda x: (x['score'], x['sum_score']), reverse=True):
-            a = guide_dict['patterns'][0]
             print("{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['seq'], guide_dict['guide_loc'], guide_dict['strand'], guide_dict['status'], guide_dict['score'], guide_dict['sum_score']), file = f)
 
             for pattern in guide_dict['patterns']:
