@@ -46,8 +46,6 @@ def find_breaks(sequence, region):
         break_dict['seq'] = sequence[left:right]
         break_dict['pam'] = sequence[pam:pam+3]
 
-        break_dict['left_flank'] = sequence[left]
-
         break_dict['br_abs'] = region[1] + br
         break_dict['chr'] = region[0]
         break_dict['ref_start'] = region[1]
@@ -56,6 +54,7 @@ def find_breaks(sequence, region):
         breaks_list.append(break_dict)
 
     return breaks_list
+
 
 def extract_flanks(chr_seq, break_dict_list):
 
