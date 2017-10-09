@@ -1,3 +1,6 @@
 .vscode
 *.txt
 *.xlsx
+*.pyc
+other/
+results/
