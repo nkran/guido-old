@@ -118,6 +118,7 @@ def find_microhomologies(left_seq, right_seq):
 
     return kmers
 
+
 def simulate_end_joining(cut_list):
     '''
     Simulates end joining with microhomologies
@@ -229,7 +230,7 @@ def simulate_end_joining(cut_list):
     return cut_sites
 
 
-def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, var_positions):
+def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
     '''
     Score guides and include information about SNPs and out-of-frame deletions
     '''
@@ -249,10 +250,13 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, var_positions)
         # calculate SNP penalty
         snp_score = 0
 
-        if var_positions:
-            for pos in var_positions:
-                if guide_start <= pos and guide_end >= pos:
-                    snp_score += 1
+        variants_in_guide = []
+
+        if variants:
+            for var in variants:
+                if guide_start <= var.POS and guide_end >= var.POS:
+                    variants_in_guide.append(var)
+
         else:
             print("No variants")
 
@@ -267,7 +271,7 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, var_positions)
 
         cut_site.update({'complete_score': complete_score})
         cut_site.update({'sum_score': score})
-        cut_site.update({'snp_score': snp_score})
+        cut_site.update({'variants': variants_in_guide})
         cut_site.update({'top_patterns': sorted_pattern_list})
 
 
@@ -319,14 +323,14 @@ else:
 # good guides ----------------------------------------------------------
 if args.good_guides:
     with open(args.good_guides, 'r') as f:
-        guides_ok = [g.strip() for g in f.readlines()]
+        guides_ok = [g.strip().upper() for g in f.readlines()]
 else:
     guides_ok = []
 
 # bad guides -----------------------------------------------------------
 if args.bad_guides:
     with open(args.bad_guides, 'r') as f:
-        guides_bad = [g.strip() for g in f.readlines()]
+        guides_bad = [g.strip().upper() for g in f.readlines()]
 else:
     guides_bad = []
 
@@ -336,12 +340,12 @@ if args.variants and args.region:
         vcf_reader = vcf.Reader(vcf_file)
 
         print('Reading VCF for region {}:{}-{}'.format(chromosome, start, end))
-        var_positions = [v.POS for v in vcf_reader.fetch(chromosome, start, end)]
+        variants = [v for v in vcf_reader.fetch(chromosome, start, end)]
 
 
 cut_sites = get_cut_sites(region)
 cut_sites = simulate_end_joining(cut_sites)
-cut_sites = evaluate_guides(cut_sites, guides_ok, guides_bad, int(args.n_patterns), var_positions)
+cut_sites = evaluate_guides(cut_sites, guides_ok, guides_bad, int(args.n_patterns), variants)
 
 # output
 if args.output_folder:
@@ -353,13 +357,16 @@ if args.output_folder:
     # print the list of guides
     with open(args.output_folder + '/guides_list_' + str(args.n_patterns) + '.txt', 'w') as f:
 
-        print("guide_sequence\tgenomic_location\tstrand\toff_target_analysis\tMMEJ_score\tMMEJ_sum_score\tMMEJ_top_score\tMMEJ_out_of_frame_del\tguide_snp_count\tleft_flank\tright_flank", file = f)
+        print("guide_sequence\tgenomic_location\tstrand\toff_target_analysis\tMMEJ_score\tMMEJ_sum_score\tMMEJ_top_score\tMMEJ_out_of_frame_del\tguide_snp_count\tSNPs\tleft_flank\tright_flank", file = f)
 
         for guide_dict in sorted(cut_sites, key=lambda x: (x['complete_score'], x['sum_score']), reverse=True):
             mmej_frames = ('\t'.join('{}'.format(pattern['frame_shift']) for pattern in guide_dict['top_patterns']))
             location = guide_dict['guide_loc'][0] + ':' + str(guide_dict['guide_loc'][1]) + '-' + str(guide_dict['guide_loc'][2])
 
-            print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['guide'], location, guide_dict['strand'], guide_dict['status'], guide_dict['complete_score'], guide_dict['sum_score'], guide_dict['top_patterns'][0]['pattern_score'], mmej_frames, guide_dict['snp_score'], guide_dict['left_flank_seq'], guide_dict['right_flank_seq']), file = f)
+            variants_count = len(guide_dict['variants'])
+            variants_string = " ".join(["{}:{}/{}".format(v.POS, v.REF, v.ALT) for v in guide_dict['variants']])
+
+            print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['guide'], location, guide_dict['strand'], guide_dict['status'], guide_dict['complete_score'], guide_dict['sum_score'], guide_dict['top_patterns'][0]['pattern_score'], mmej_frames, variants_count, variants_string, guide_dict['left_flank_seq'], guide_dict['right_flank_seq']), file = f)
 
     # print the list of guides and their MH patterns
     with open(args.output_folder + '/guides_list_mh_' + str(args.n_patterns) + '.txt', 'w') as f:
@@ -369,7 +376,7 @@ if args.output_folder:
 
             print("{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['guide'], location, guide_dict['strand'], guide_dict['status'], guide_dict['complete_score'], guide_dict['sum_score']), file = f)
             for pattern in guide_dict['top_patterns']:
-                print("{}\t{}\t{}\t{}\t{}".format(pattern['pattern_score'], len(pattern['deletion_seq']), pattern['frame_shift'], pattern['pattern'], pattern['deletion_seq']), file = f)
+                print("{}\t{}\t{}\t{}\t{}\t{}".format(pattern['left'] + pattern['right'], pattern['pattern_score'], len(pattern['deletion_seq']), pattern['frame_shift'], pattern['pattern'], pattern['deletion_seq']), file = f)
 
             print("....................................................................", file = f)
 
