@@ -1,21 +1,30 @@
-from __future__ import print_function
 import os
 import re
 import math
 import argparse
 import itertools
+import log
 import vcf
-from Bio.Seq import Seq, reverse_complement
+import gffutils
+
 from Bio import SeqIO
+from Bio.Seq import reverse_complement
+
+from output import save_guides_list, save_mh_list
 
 
-def find_breaks(sequence):
+logger = log.createCustomLogger('root')
+ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
+
+
+def find_breaks(sequence, min_flanking_length, max_flanking_length):
     '''
     Find NGG motives (PAM sites)
     Keep only those which are more than 30 bp downstream
     '''
 
-    pams = [m.start() for m in re.finditer(r'(?=([ACTG]GG))', sequence) if m.start(0) - args.min_flanking_length > 0 and m.end(0) + args.min_flanking_length < len(sequence)]
+    logger.info('Finding PAMs ...')
+    pams = [m.start() for m in re.finditer(r'(?=([ACTG]GG))', sequence) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(sequence)]
     breaks_list = []
 
     for pam in pams:
@@ -23,8 +32,8 @@ def find_breaks(sequence):
         break_dict = {}
 
         br = pam - 3
-        left = br - args.max_flanking_length
-        right = br + args.max_flanking_length
+        left = br - max_flanking_length
+        right = br + max_flanking_length
 
         if left < 0:
             left = 0
@@ -40,19 +49,21 @@ def find_breaks(sequence):
     return breaks_list
 
 
-def get_cut_sites(region):
+def get_cut_sites(region, min_flanking_length, max_flanking_length):
     '''
     Get cutsites for positive and negative strand in the context
     of provided genomic region.
     '''
+
+    logger.info('Analysing sequence ...')
 
     chromosome, start, end, chr_seq = region
 
     seq = str(chr_seq[start:end].upper())
     rev_seq = reverse_complement(seq)
 
-    cuts_plus = find_breaks(seq)
-    cuts_minus = find_breaks(rev_seq)
+    cuts_plus = find_breaks(seq, min_flanking_length, max_flanking_length)
+    cuts_minus = find_breaks(rev_seq, min_flanking_length, max_flanking_length)
 
     for cut in cuts_plus:
         break_abs = cut['break'] + start
@@ -85,6 +96,7 @@ def find_microhomologies(left_seq, right_seq):
     Start with predifined k-mer length and extend it until it finds more
     than one match in sequence
     '''
+
     # kmers list
     kmers = []
 
@@ -104,10 +116,12 @@ def find_microhomologies(left_seq, right_seq):
     return kmers
 
 
-def simulate_end_joining(cut_list):
+def simulate_end_joining(cut_list, length_weight):
     '''
     Simulates end joining with microhomologies
     '''
+
+    logger.info('Simulating MMEJ ...')
 
     for i, cut in enumerate(cut_list):
 
@@ -156,7 +170,7 @@ def simulate_end_joining(cut_list):
                 deletion_seq = left_seq[left_seq_pos:] + right_seq[:right_seq_pos]
 
                 # score pattern
-                length_factor =  round(1 / math.exp((deletion_length) / (args.length_weight)), 3)
+                length_factor =  round(1 / math.exp((deletion_length) / (length_weight)), 3)
                 pattern_score = 100 * length_factor * ((len(pattern) - pattern_GC) + (pattern_GC * 2))
 
                 # frame shift
@@ -212,7 +226,7 @@ def simulate_end_joining(cut_list):
 
         cut.update({'pattern_list': pattern_list_filtered})
 
-    return cut_sites
+    return cut_list
 
 
 def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
@@ -220,6 +234,8 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
     Score guides and include information about SNPs and out-of-frame deletions
     '''
     guides = []
+
+    logger.info('Evaluating guides ...')
 
     for cut_site in cut_sites:
         guide = {}
@@ -234,7 +250,6 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
 
         # calculate SNP penalty
         snp_score = 0
-
         variants_in_guide = []
 
         if variants:
@@ -242,8 +257,10 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
                 if guide_start <= var.POS and guide_end >= var.POS:
                     variants_in_guide.append(var)
 
+        if variants_in_guide:
+            wt_prob = reduce(lambda x, y: x*y, [1 - sum(v.aaf) for v in variants_in_guide])
         else:
-            print("No variants")
+            wt_prob = 1
 
         # calculate scores for MH in cut site
         for pattern_dict in sorted_pattern_list:
@@ -258,7 +275,7 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
         cut_site.update({'sum_score': score})
         cut_site.update({'variants': variants_in_guide})
         cut_site.update({'top_patterns': sorted_pattern_list})
-
+        cut_site.update({'wt_prob': wt_prob})
 
         # check if guide is ok - external checking
         if guide_seq in guides_ok:
@@ -271,11 +288,12 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
     return cut_sites
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(description='Microhomology predictor.')
 
     parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence (TXT or FASTA).')
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
+    parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
     parser.add_argument('--good-guides', '-g', dest='good_guides', help='List of good guide sequences.')
     parser.add_argument('--bad-guides', '-b', dest='bad_guides', help='List of bad guide sequences.')
@@ -285,41 +303,95 @@ def main():
     parser.add_argument('--n-patterns', '-p', type=int, dest='n_patterns', help='Number of MH patterns used in guide evaluation.', default=5)
     parser.add_argument('--output-folder', '-o', dest='output_folder', help="Output folder.")
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    # sequence
+def define_genomic_region(chromosome, start, end):
+    records = SeqIO.parse(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.fa'), "fasta")
+    reference = {}
+
+    for record in records:
+        reference[record.id] = record
+
+    chr_seq = str(reference[chromosome].seq.upper())
+    region = (chromosome, start, end, chr_seq)
+
+    return region
+
+def annotate_guides(cut_sites, ann_db):
+    '''
+    Use GFF annotation to annotate guides
+    '''
+
+    for cut_site in cut_sites:
+        location = cut_site['guide_loc']
+
+        features = [f for f in ann_db.region(seqid=location[0], start=location[1], end=location[2])]
+        cut_site.update({'annotation': features})
+
+    return cut_sites
+
+def main():
+
+    logger.info("Let's dance!")
+
+    args = parse_args()
+
     max_flanking_length = args.max_flanking_length
     min_flanking_length = args.min_flanking_length
     length_weight = args.length_weight
 
-    _ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
-
     # sequence input -------------------------------------------------------
     if args.sequence:
+        '''
+        Option -i: read sequence from FASTA or txt file
+        '''
         try:
             record = SeqIO.parse(args.sequence, "fasta").next()
-            print('Reading FASTA', args.sequence)
+            logger.info('Reading FASTA', args.sequence)
             seq = str(record.seq.upper())
         except:
-            print('Reading text sequence', args.sequence)
+            logger.info('Reading text sequence', args.sequence)
             with open(args.sequence, 'r') as f:
                 seq = f.readline().strip().upper()
 
-    if args.region:
-        print('Using AgamP4 sequence')
+    if args.region or args.gene:
+        ann_db = gffutils.FeatureDB(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.7'), keep_order=True)
 
-        records = SeqIO.parse(os.path.join(_ROOT_PATH, 'data', 'references', 'AgamP4.fa'), "fasta")
-        reference = {}
+    if args.region and args.gene:
+        logger.info('Please use only one option for genomic region selection. Use -r or -G.')
+        quit()
+
+    if args.region:
+        '''
+        Option -r: specify the region of interest where guides should be evaluated
+        '''
+
+        logger.info('Using AgamP4 reference genome. Region: {}'.format(args.region))
 
         chromosome = args.region.split(':')[0]
         start = int(args.region.split(':')[1].split('-')[0])
         end = int(args.region.split(':')[1].split('-')[1])
 
-        for record in records:
-            reference[record.id] = record
+        region = define_genomic_region(chromosome, start, end)
 
-        chr_seq = str(reference[chromosome].seq.upper())
-        region = (chromosome, start, end, chr_seq)
+    elif args.gene:
+        '''
+        Option -G: get genomic region from a gene name
+        '''
+        logger.info('Using AgamP4 reference genome. Gene: {}'.format(args.gene))
+
+        try:
+            gene = ann_db[args.gene]
+        except:
+            logger.error('Gene not found: {}'.format(args.gene))
+            quit()
+
+        chromosome = gene.seqid
+        start = gene.start
+        end = gene.end
+
+        region = define_genomic_region(chromosome, start, end)
+
     else:
         region = ('seq', 0, 0, False)
 
@@ -338,22 +410,29 @@ def main():
         guides_bad = []
 
     # variants input -------------------------------------------------------
-    if args.variants and args.region:
+    if all(region) and args.variants:
+        '''
+        Option -v: get variants from VCF file
+        '''
         with open(args.variants, 'r') as vcf_file:
             vcf_reader = vcf.Reader(vcf_file)
 
-            print('Reading VCF for region {}:{}-{}'.format(chromosome, start, end))
+            logger.info('Reading VCF for region {}:{}-{}'.format(chromosome, start, end))
             variants = [v for v in vcf_reader.fetch(chromosome, start, end)]
     else:
         variants = []
 
-    if not args.region and not args.sequence:
-        print('Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.')
-        exit()
+    if not args.region and not args.sequence and not args.gene:
+        logger.error('Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.')
+        quit()
 
-    cut_sites = get_cut_sites(region)
-    cut_sites = simulate_end_joining(cut_sites)
+    # execute main steps
+    cut_sites = get_cut_sites(region, min_flanking_length, max_flanking_length)
+    cut_sites = simulate_end_joining(cut_sites, length_weight)
     cut_sites = evaluate_guides(cut_sites, guides_ok, guides_bad, args.n_patterns, variants)
+
+    if ann_db:
+        cut_sites = annotate_guides(cut_sites, ann_db)
 
     # output
     if args.output_folder:
@@ -362,29 +441,9 @@ def main():
         if not os.path.exists(args.output_folder):
             os.makedirs(args.output_folder)
 
-        # print the list of guides
-        with open(args.output_folder + '/guides_list_' + str(args.n_patterns) + '.txt', 'w') as f:
+        save_guides_list(cut_sites, args.output_folder, args.n_patterns)
+        save_mh_list(cut_sites, args.output_folder, args.n_patterns)
 
-            print("guide_sequence\tgenomic_location\tstrand\toff_target_analysis\tMMEJ_score\tMMEJ_sum_score\tMMEJ_top_score\tMMEJ_out_of_frame_del\tguide_snp_count\tSNPs\tleft_flank\tright_flank", file = f)
-
-            for guide_dict in sorted(cut_sites, key=lambda x: (x['complete_score'], x['sum_score']), reverse=True):
-                mmej_frames = ('\t'.join('{}'.format(pattern['frame_shift']) for pattern in guide_dict['top_patterns']))
-                location = guide_dict['guide_loc'][0] + ':' + str(guide_dict['guide_loc'][1]) + '-' + str(guide_dict['guide_loc'][2])
-
-                variants_count = len(guide_dict['variants'])
-                variants_string = " ".join(["{}:{}/{}".format(v.POS, v.REF, v.ALT) for v in guide_dict['variants']])
-
-                print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['guide'], location, guide_dict['strand'], guide_dict['status'], guide_dict['complete_score'], guide_dict['sum_score'], guide_dict['top_patterns'][0]['pattern_score'], mmej_frames, variants_count, variants_string, guide_dict['left_flank_seq'], guide_dict['right_flank_seq']), file = f)
-
-        # print the list of guides and their MH patterns
-        with open(args.output_folder + '/guides_list_mh_' + str(args.n_patterns) + '.txt', 'w') as f:
-
-            for guide_dict in sorted(cut_sites, key=lambda x: (x['complete_score'], x['sum_score']), reverse=True):
-                location = guide_dict['guide_loc'][0] + ':' + str(guide_dict['guide_loc'][1]) + '-' + str(guide_dict['guide_loc'][2])
-
-                print("{}\t{}\t{}\t{}\t{}\t{}".format(guide_dict['guide'], location, guide_dict['strand'], guide_dict['status'], guide_dict['complete_score'], guide_dict['sum_score']), file = f)
-                for pattern in guide_dict['top_patterns']:
-                    print("{}\t{}\t{}\t{}\t{}\t{}".format(pattern['left'] + pattern['right'], pattern['pattern_score'], len(pattern['deletion_seq']), pattern['frame_shift'], pattern['pattern'], pattern['deletion_seq']), file = f)
-
-                print("....................................................................", file = f)
-
+    else:
+        logger.error('No output folder selected. Please define it by using -o option.')
+        quit()
