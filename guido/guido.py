@@ -10,7 +10,8 @@ import gffutils
 from Bio import SeqIO
 from Bio.Seq import reverse_complement
 
-from output import save_guides_list, save_mh_list
+from output import save_guides_list, save_detailed_list
+from off_targets import run_bowtie, off_target_evaluation
 
 
 logger = log.createCustomLogger('root')
@@ -229,7 +230,7 @@ def simulate_end_joining(cut_list, length_weight):
     return cut_list
 
 
-def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
+def evaluate_guides(cut_sites, n_patterns, variants):
     '''
     Score guides and include information about SNPs and out-of-frame deletions
     '''
@@ -277,14 +278,6 @@ def evaluate_guides(cut_sites, guides_ok, guides_bad, n_patterns, variants):
         cut_site.update({'top_patterns': sorted_pattern_list})
         cut_site.update({'wt_prob': wt_prob})
 
-        # check if guide is ok - external checking
-        if guide_seq in guides_ok:
-            cut_site.update({'status': 'ok'})
-        elif guide_seq in guides_bad:
-            cut_site.update({'status': 'bad'})
-        else:
-            cut_site.update({'status': 'NA'})
-
     return cut_sites
 
 
@@ -295,8 +288,6 @@ def parse_args():
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
-    parser.add_argument('--good-guides', '-g', dest='good_guides', help='List of good guide sequences.')
-    parser.add_argument('--bad-guides', '-b', dest='bad_guides', help='List of bad guide sequences.')
     parser.add_argument('--max-flanking', '-M', type=int, dest='max_flanking_length', help='Max length of flanking region.', default=40)
     parser.add_argument('--min-flanking', '-m', type=int, dest='min_flanking_length', help='Min length of flanking region.', default=25)
     parser.add_argument('--length-weight', '-w', type=float, dest='length_weight', help='Length weight - used in scoring.', default=20.0)
@@ -395,20 +386,6 @@ def main():
     else:
         region = ('seq', 0, 0, False)
 
-    # good guides ----------------------------------------------------------
-    if args.good_guides:
-        with open(args.good_guides, 'r') as f:
-            guides_ok = [g.strip().upper() for g in f.readlines()]
-    else:
-        guides_ok = []
-
-    # bad guides -----------------------------------------------------------
-    if args.bad_guides:
-        with open(args.bad_guides, 'r') as f:
-            guides_bad = [g.strip().upper() for g in f.readlines()]
-    else:
-        guides_bad = []
-
     # variants input -------------------------------------------------------
     if all(region) and args.variants:
         '''
@@ -429,12 +406,14 @@ def main():
     # execute main steps
     cut_sites = get_cut_sites(region, min_flanking_length, max_flanking_length)
     cut_sites = simulate_end_joining(cut_sites, length_weight)
-    cut_sites = evaluate_guides(cut_sites, guides_ok, guides_bad, args.n_patterns, variants)
+    cut_sites = evaluate_guides(cut_sites, args.n_patterns, variants)
 
     if ann_db:
         cut_sites = annotate_guides(cut_sites, ann_db)
 
-    # output
+    target_dict = run_bowtie(cut_sites, os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4'))
+    cut_sites = off_target_evaluation(cut_sites, target_dict)
+
     if args.output_folder:
 
         # create output dir if it doesn't exist
@@ -442,7 +421,7 @@ def main():
             os.makedirs(args.output_folder)
 
         save_guides_list(cut_sites, args.output_folder, args.n_patterns)
-        save_mh_list(cut_sites, args.output_folder, args.n_patterns)
+        save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
 
     else:
         logger.error('No output folder selected. Please define it by using -o option.')
