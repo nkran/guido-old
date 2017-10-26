@@ -259,7 +259,7 @@ def evaluate_guides(cut_sites, n_patterns, variants):
                     variants_in_guide.append(var)
 
         if variants_in_guide:
-            wt_prob = reduce(lambda x, y: x*y, [1 - sum(v.aaf) for v in variants_in_guide])
+            wt_prob = reduce(lambda x, y: x*y, [1 - sum(v.aaf) for v in variants_in_guide if v.aaf])
         else:
             wt_prob = 1
 
