@@ -10,7 +10,7 @@ import gffutils
 from Bio import SeqIO
 from Bio.Seq import reverse_complement
 
-from output import save_guides_list, save_detailed_list
+from output import save_guides_list, save_guides_list_simple, save_detailed_list, save_detailed_list_simple
 from off_targets import run_bowtie, off_target_evaluation
 
 
@@ -332,21 +332,10 @@ def main():
     length_weight = args.length_weight
 
     # sequence input -------------------------------------------------------
-    if args.sequence:
-        '''
-        Option -i: read sequence from FASTA or txt file
-        '''
-        try:
-            record = SeqIO.parse(args.sequence, "fasta").next()
-            logger.info('Reading FASTA', args.sequence)
-            seq = str(record.seq.upper())
-        except:
-            logger.info('Reading text sequence', args.sequence)
-            with open(args.sequence, 'r') as f:
-                seq = f.readline().strip().upper()
-
     if args.region or args.gene:
         ann_db = gffutils.FeatureDB(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.7'), keep_order=True)
+    else:
+        ann_db = False
 
     if args.region and args.gene:
         logger.info('Please use only one option for genomic region selection. Use -r or -G.')
@@ -383,6 +372,20 @@ def main():
 
         region = define_genomic_region(chromosome, start, end)
 
+    elif args.sequence:
+        '''
+        Option -i: read sequence from FASTA or txt file
+        '''
+        try:
+            record = SeqIO.parse(args.sequence, "fasta").next()
+            logger.info('Reading FASTA: {}'.format(args.sequence))
+            seq = str(record.seq.upper())
+        except:
+            logger.info('Reading text sequence', args.sequence)
+            with open(args.sequence, 'r') as f:
+                seq = f.readline().strip().upper()
+
+        region = ("sequence", 1, len(seq), seq)
     else:
         region = ('seq', 0, 0, False)
 
@@ -420,8 +423,13 @@ def main():
         if not os.path.exists(args.output_folder):
             os.makedirs(args.output_folder)
 
-        save_guides_list(cut_sites, args.output_folder, args.n_patterns)
-        save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
+        if args.sequence:
+            # simple output
+            save_guides_list_simple(cut_sites, args.output_folder, args.n_patterns)
+            save_detailed_list_simple(cut_sites, args.output_folder, args.n_patterns)
+        else:
+            save_guides_list(cut_sites, args.output_folder, args.n_patterns)
+            save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
 
     else:
         logger.error('No output folder selected. Please define it by using -o option.')

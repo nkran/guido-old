@@ -23,7 +23,6 @@ def run_bowtie(cut_sites, genome_index_path):
     target_dict = {}
 
     for line in stdout.split(os.linesep):
-
         if line:
             b_id, b_strand, b_chromosome, b_start, b_seq, b_reps, b_mm = line.split('\t')
 
