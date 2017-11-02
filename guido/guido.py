@@ -10,7 +10,7 @@ import gffutils
 from Bio import SeqIO
 from Bio.Seq import reverse_complement
 
-from output import save_guides_list, save_guides_list_simple, save_detailed_list, save_detailed_list_simple
+from output import save_guides_list, save_guides_list_simple, save_detailed_list, save_detailed_list_simple, save_to_bed
 from off_targets import run_bowtie, off_target_evaluation
 
 
@@ -430,6 +430,7 @@ def main():
         else:
             save_guides_list(cut_sites, args.output_folder, args.n_patterns)
             save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
+            save_to_bed(cut_sites, args.output_folder, args.n_patterns)
 
     else:
         logger.error('No output folder selected. Please define it by using -o option.')
