@@ -417,6 +417,14 @@ def main():
         logger.error('Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.')
         quit()
 
+    if not args.output_folder:
+        logger.error('No output folder selected. Please define it by using -o option.')
+        quit()
+
+    # create output dir if it doesn't exist
+    if not os.path.exists(args.output_folder):
+        os.makedirs(args.output_folder)
+
     # execute main steps
     cut_sites = get_cut_sites(region, min_flanking_length, max_flanking_length, args.pam)
     cut_sites = simulate_end_joining(cut_sites, length_weight)
@@ -425,24 +433,14 @@ def main():
     if ann_db:
         cut_sites = annotate_guides(cut_sites, ann_db)
 
-    if args.output_folder:
+    target_dict = run_bowtie(cut_sites, os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4'), args.output_folder)
+    cut_sites = off_target_evaluation(cut_sites, target_dict)
 
-        # create output dir if it doesn't exist
-        if not os.path.exists(args.output_folder):
-            os.makedirs(args.output_folder)
-
-        target_dict = run_bowtie(cut_sites, os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4'), args.output_folder)
-        cut_sites = off_target_evaluation(cut_sites, target_dict)
-
-        if args.sequence:
-            # simple output
-            save_guides_list_simple(cut_sites, args.output_folder, args.n_patterns)
-            save_detailed_list_simple(cut_sites, args.output_folder, args.n_patterns)
-        else:
-            save_guides_list(cut_sites, args.output_folder, args.n_patterns)
-            save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
-            save_to_bed(cut_sites, args.output_folder, args.n_patterns)
-
+    if args.sequence:
+        # simple output
+        save_guides_list_simple(cut_sites, args.output_folder, args.n_patterns)
+        save_detailed_list_simple(cut_sites, args.output_folder, args.n_patterns)
     else:
-        logger.error('No output folder selected. Please define it by using -o option.')
-        quit()
+        save_guides_list(cut_sites, args.output_folder, args.n_patterns)
+        save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
+        save_to_bed(cut_sites, args.output_folder, args.n_patterns)
