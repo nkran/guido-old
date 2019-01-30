@@ -1,6 +1,34 @@
 # Guido
 Guide designer
 
+
+## Installation - option 1 (Conda)
+Make sure you have have Conda installed on your computer.
+
+### Create conda enviroment
+```
+conda create -n guido --file requirements.txt
+```
+### Enviroment with Guido
+After creating the enviroment you can activate it by using:
+```
+source activate guido
+```
+To get out of the enviroment use:
+```
+source deactivate
+```
+
+
+## Installation - option 2 (pip)
+### Install dependencies with pip
+```
+pip install -r requirements.txt
+```
+
+## Download _Anopheles gambiae_ data
+Download ZIP from: https://imperialcollegelondon.box.com/v/guido-agam-data and extract the archive into `guido/` folder.
+
 ## Usage
 ```
 usage: guido.py [-h] [--sequence-file SEQUENCE] [--region REGION]
