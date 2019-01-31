@@ -1,0 +1,10 @@
+biopython==1.68
+scikit-allel==1.1.10
+argparse==1.4.0
+gffutils==0.9
+h5py==2.8.0
+numpy==1.14.3
+pandas==0.23.0
+PyVCF==0.6.8
+zarr==2.2.0
+requests==2.21.0
