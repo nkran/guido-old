@@ -17,7 +17,7 @@ def run_bowtie(cut_sites, genome_index_path):
 
     # run bowtie alignment
     bowtie_command = 'bowtie -a -v {} -l 23 --suppress 6 {} -c {}'.format(missmatches, genome_index_path, guides)
-    rproc = subprocess.Popen(bowtie_command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    rproc = subprocess.Popen(bowtie_command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=True)
     stdout, stderr = rproc.communicate()
 
     target_dict = {}
@@ -48,7 +48,6 @@ def run_bowtie(cut_sites, genome_index_path):
 def off_target_evaluation(cut_sites, target_dict):
 
     logger.info('Evaluating off-targets ...')
-
     for tid in sorted(target_dict.keys(), key=lambda x: int(x)):
 
         targets = target_dict[tid]
