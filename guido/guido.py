@@ -163,7 +163,7 @@ def simulate_end_joining(cut_list, length_weight):
 
     for i, cut in enumerate(cut_list):
 
-        br = cut['br']
+        br = cut['rel_break']
         seq = cut['seq']
 
         # create list for storing MH patterns
