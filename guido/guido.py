@@ -53,7 +53,7 @@ def break_dict(sequence, pams, pam_len, max_flanking_length, strand):
     
     return breaks_list
 
-def find_breaks(sequence, min_flanking_length, max_flanking_length, pam='NGG'):
+def find_breaks(sequence, min_flanking_length, max_flanking_length, pam):
     '''
     Find Cas9-specific PAM motifs on both strands of a given sequence
     Assumes SpCas9 / 'NGG'-motif by default
@@ -77,17 +77,19 @@ def find_breaks(sequence, min_flanking_length, max_flanking_length, pam='NGG'):
                   'H':'[ACT]',
                   'V':'[ACG]',
                   'N':'[ACGT]'}
-    iupac_pam = ''.join([iupac_dict[letter] for letter in motif])
+    iupac_pam = ''.join([iupac_dict[letter] for letter in pam])
     
     rev_seq = reverse_complement(sequence)
     
     pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, sequence) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(sequence)]
     rev_pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, rev_seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(rev_seq)]
-    pam_len = len(motif)
+    pam_len = len(pam)
     
-    return break_dict(sequence, pams, pam_len, max_flanking_length, '+') + break_dict(rev_seq, rev_pams, pam_len, max_flanking_length, '-')
+    all_breaks_list = break_dict(sequence, pams, pam_len, max_flanking_length, '+') + break_dict(rev_seq, rev_pams, pam_len, max_flanking_length, '-')
+    
+    return all_breaks_list
 
-def get_cut_sites(region, min_flanking_length, max_flanking_length):
+def get_cut_sites(region, min_flanking_length, max_flanking_length, pam):
     '''
     Get cutsites for positive and negative strand in the context
     of provided genomic region.
@@ -100,39 +102,24 @@ def get_cut_sites(region, min_flanking_length, max_flanking_length):
     seq = str(chr_seq[start:end].upper())
     rev_seq = reverse_complement(seq)
 
-    cuts_plus = find_breaks(seq, min_flanking_length, max_flanking_length)
-    cuts_minus = find_breaks(rev_seq, min_flanking_length, max_flanking_length)
+    cuts = find_breaks(seq, min_flanking_length, max_flanking_length, pam)
 
-    for cut in cuts_plus:
+    for cut in cuts:
         break_abs = cut['break'] + start
 
-        cut.update({'strand': '+'})
         cut.update({'break_abs': break_abs})
         cut.update({'guide_loc': (chromosome, break_abs - 17, break_abs + 6)})
 
         cut.update({'left_flank_seq': chr_seq[break_abs - 2000:break_abs]})
         cut.update({'right_flank_seq': chr_seq[break_abs:break_abs + 2000]})
 
-    for cut in cuts_minus:
-        break_abs = end - cut['break']
-
-        cut.update({'strand': '-'})
-        cut.update({'break_abs': break_abs + 1})
-        cut.update({'guide_loc': (chromosome, break_abs - 5, break_abs + 17)})
-
-        cut.update({'left_flank_seq': chr_seq[break_abs - 2000:break_abs]})
-        cut.update({'right_flank_seq': chr_seq[break_abs:break_abs + 2000]})
-
-    # merge lists
-    cut_list = cuts_plus + cuts_minus
-
-    return cut_list
+    return cuts
 
 
 def find_microhomologies(left_seq, right_seq):
     '''
-    Start with predifined k-mer length and extend it until it finds more
-    than one match in sequence
+    Start with predefined k-mer length and extend it until it finds more
+    than one match in sequence.
     '''
 
     # kmers list
@@ -321,11 +308,11 @@ def evaluate_guides(cut_sites, n_patterns, variants):
 def parse_args():
     parser = argparse.ArgumentParser(description='Microhomology predictor.')
     
-    parser.add_argument('--sequence-file', '-i', metavar='', dest='sequence', help='File with the target sequence (TXT or FASTA).')
+    parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence (TXT or FASTA).')
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
-    parser.add_argument('--pam', '-P', dest='pam', help='Protospacer adjacent motif (IUPAC)', default='NGG')
+    parser.add_argument('--pam', '-P', dest='pam', help='Protospacer adjacent motif (IUPAC format)', default='NGG')
     parser.add_argument('--max-flanking', '-M', type=int, dest='max_flanking_length', help='Max length of flanking region.', default=40)
     parser.add_argument('--min-flanking', '-m', type=int, dest='min_flanking_length', help='Min length of flanking region.', default=25)
     parser.add_argument('--length-weight', '-w', type=float, dest='length_weight', help='Length weight - used in scoring.', default=20.0)
@@ -445,9 +432,10 @@ def main():
         quit()
 
     # execute main steps
-    cut_sites = get_cut_sites(region, min_flanking_length, max_flanking_length)
-    cut_sites = simulate_end_joining(cut_sites, length_weight)
-    cut_sites = evaluate_guides(cut_sites, args.n_patterns, variants)
+    cut_sites = get_cut_sites(region, min_flanking_length, max_flanking_length, args.pam)
+    print(cut_sites)
+    #cut_sites = simulate_end_joining(cut_sites, length_weight)
+    #cut_sites = evaluate_guides(cut_sites, args.n_patterns, variants)
 
     if ann_db:
         cut_sites = annotate_guides(cut_sites, ann_db)
