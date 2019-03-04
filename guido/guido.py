@@ -8,7 +8,6 @@ import vcf
 import gffutils
 
 from Bio import SeqIO
-from Bio.Seq import reverse_complement
 
 from output import save_guides_list, save_guides_list_simple, save_detailed_list, save_detailed_list_simple, save_to_bed
 from off_targets import run_bowtie, off_target_evaluation
@@ -18,37 +17,71 @@ logger = log.createCustomLogger('root')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
-def find_breaks(sequence, min_flanking_length, max_flanking_length):
-    '''
-    Find NGG motives (PAM sites)
-    Keep only those which are more than 30 bp downstream
-    '''
+def reverse_complement(sequence):
+    complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
+    return ''.join([complement[base] for base in sequence[::-1]])
 
-    logger.info('Finding PAMs ...')
-    pams = [m.start() for m in re.finditer(r'(?=([ACTG]GG))', sequence) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(sequence)]
+def break_dict(sequence, pams, pam_len, max_flanking_length, strand):
+    
     breaks_list = []
-
+    
     for pam in pams:
-
+        
         break_dict = {}
-
-        br = pam - 3
+        
+        br = pam - pam_len
         left = br - max_flanking_length
-        right = br + max_flanking_length
-
         if left < 0:
             left = 0
-
-        break_dict['br'] = br - left
+        right = br + max_flanking_length
+        
+        break_dict['rel_break'] = br - left
         break_dict['break'] = br
         break_dict['seq'] = sequence[left:right]
-        break_dict['pam'] = sequence[pam:pam+3]
-        break_dict['guide'] = sequence[br-17:br+6]
-
+        break_dict['pam'] = sequence[pam:pam+pam_len]
+        break_dict['guide'] = sequence[pam-20:pam+pam_len]
+        if strand == '+':
+            break_dict['strand'] = '+'
+        elif strand == '-':
+            break_dict['strand'] = '-'
+        
         breaks_list.append(break_dict)
-
+    
     return breaks_list
 
+def find_breaks(sequence, min_flanking_length, max_flanking_length, motif='NGG'):
+    '''
+    Find Cas9-specific PAM motifs on both strands of a given sequence
+    Assumes SpCas9 / 'NGG'-motif by default
+    Keep only those which are more than 30 bp downstream
+    '''
+    
+    logger.info('Finding PAMs ...')
+    
+    iupac_dict = {'A':'A',
+                  'C':'C',
+                  'G':'G',
+                  'T':'T',
+                  'R':'[AG]',
+                  'Y':'[CT]',
+                  'S':'[GC]',
+                  'W':'[AT]',
+                  'K':'[GT]',
+                  'M':'[AC]',
+                  'B':'[CGT]',
+                  'D':'[AGT]',
+                  'H':'[ACT]',
+                  'V':'[ACG]',
+                  'N':'[ACGT]'}
+    iupac_pam = ''.join([iupac_dict[letter] for letter in motif])
+    
+    rev_seq = reverse_complement(sequence)
+    
+    pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, sequence) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(sequence)]
+    rev_pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, rev_seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(rev_seq)]
+    pam_len = len(motif)
+    
+    return break_dict(sequence, pams, pam_len, max_flanking_length, '+') + break_dict(rev_seq, rev_pams, pam_len, max_flanking_length, '-')
 
 def get_cut_sites(region, min_flanking_length, max_flanking_length):
     '''
