@@ -325,6 +325,7 @@ def parse_args():
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
+    parser.add_argument('--pam', '-p', dest='pam', help='Protospacer adjacent motif (IUPAC)', default='NGG')
     parser.add_argument('--max-flanking', '-M', type=int, dest='max_flanking_length', help='Max length of flanking region.', default=40)
     parser.add_argument('--min-flanking', '-m', type=int, dest='min_flanking_length', help='Min length of flanking region.', default=25)
     parser.add_argument('--length-weight', '-w', type=float, dest='length_weight', help='Length weight - used in scoring.', default=20.0)
