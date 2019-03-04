@@ -321,7 +321,7 @@ def evaluate_guides(cut_sites, n_patterns, variants):
 def parse_args():
     parser = argparse.ArgumentParser(description='Microhomology predictor.')
     
-    parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence (TXT or FASTA).')
+    parser.add_argument('--sequence-file', '-i', metavar='', dest='sequence', help='File with the target sequence (TXT or FASTA).')
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
