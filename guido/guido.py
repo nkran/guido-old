@@ -22,6 +22,10 @@ def reverse_complement(sequence):
     return ''.join([complement[base] for base in sequence[::-1]])
 
 def break_dict(sequence, pams, pam_len, max_flanking_length, strand):
+    '''
+    Create a list of all PAMs with information about:
+    position (break), pam sequence (pam), MMEJ search window (rel_break / seq), gRNA (guide), and strand (strand)
+    '''
     
     breaks_list = []
     
