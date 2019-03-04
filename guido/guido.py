@@ -53,7 +53,7 @@ def break_dict(sequence, pams, pam_len, max_flanking_length, strand):
     
     return breaks_list
 
-def find_breaks(sequence, min_flanking_length, max_flanking_length, motif='NGG'):
+def find_breaks(sequence, min_flanking_length, max_flanking_length, pam='NGG'):
     '''
     Find Cas9-specific PAM motifs on both strands of a given sequence
     Assumes SpCas9 / 'NGG'-motif by default
@@ -320,18 +320,18 @@ def evaluate_guides(cut_sites, n_patterns, variants):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Microhomology predictor.')
-
+    
     parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence (TXT or FASTA).')
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
-    parser.add_argument('--pam', '-p', dest='pam', help='Protospacer adjacent motif (IUPAC)', default='NGG')
+    parser.add_argument('--pam', '-P', dest='pam', help='Protospacer adjacent motif (IUPAC)', default='NGG')
     parser.add_argument('--max-flanking', '-M', type=int, dest='max_flanking_length', help='Max length of flanking region.', default=40)
     parser.add_argument('--min-flanking', '-m', type=int, dest='min_flanking_length', help='Min length of flanking region.', default=25)
     parser.add_argument('--length-weight', '-w', type=float, dest='length_weight', help='Length weight - used in scoring.', default=20.0)
     parser.add_argument('--n-patterns', '-p', type=int, dest='n_patterns', help='Number of MH patterns used in guide evaluation.', default=5)
     parser.add_argument('--output-folder', '-o', dest='output_folder', help="Output folder.")
-
+    
     return parser.parse_args()
 
 def define_genomic_region(chromosome, start, end):
