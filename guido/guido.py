@@ -17,10 +17,6 @@ logger = log.createCustomLogger('root')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
-def reverse_complement(sequence):
-    complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
-    return ''.join([complement[base] for base in sequence[::-1]])
-
 def break_dict(sequence, pams, pam_len, max_flanking_length, strand):
     '''
     Create a list of all PAMs with information about:
@@ -79,7 +75,8 @@ def find_breaks(sequence, min_flanking_length, max_flanking_length, pam):
                   'N':'[ACGT]'}
     iupac_pam = ''.join([iupac_dict[letter] for letter in pam])
     
-    rev_seq = reverse_complement(sequence)
+    complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
+    rev_seq = ''.join([complement[base] for base in sequence[::-1]])
     
     pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, sequence) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(sequence)]
     rev_pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, rev_seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(rev_seq)]
@@ -433,9 +430,8 @@ def main():
 
     # execute main steps
     cut_sites = get_cut_sites(region, min_flanking_length, max_flanking_length, args.pam)
-    print(cut_sites)
-    #cut_sites = simulate_end_joining(cut_sites, length_weight)
-    #cut_sites = evaluate_guides(cut_sites, args.n_patterns, variants)
+    cut_sites = simulate_end_joining(cut_sites, length_weight)
+    cut_sites = evaluate_guides(cut_sites, args.n_patterns, variants)
 
     if ann_db:
         cut_sites = annotate_guides(cut_sites, ann_db)
