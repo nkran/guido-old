@@ -104,7 +104,7 @@ def get_cut_sites(region, min_flanking_length, max_flanking_length, pam):
         break_abs = cut['break'] + start
 
         cut.update({'break_abs': break_abs})
-        cut.update({'guide_loc': (chromosome, break_abs - 17, break_abs + 6)})
+        cut.update({'guide_loc': (chromosome, break_abs - 17, break_abs + 3 + len(pam))})
 
         cut.update({'left_flank_seq': chr_seq[break_abs - 2000:break_abs]})
         cut.update({'right_flank_seq': chr_seq[break_abs:break_abs + 2000]})
