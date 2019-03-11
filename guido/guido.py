@@ -19,8 +19,8 @@ ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 def break_dict(sequence, pams, pam_len, max_flanking_length, strand):
     '''
-    Create a list of all PAMs with information about:
-    position (break), pam sequence (pam), MMEJ search window (rel_break / seq), gRNA (guide), and strand (strand)
+    Create a list of dictionaries of all PAMs with information about:
+    position ('break'), pam sequence ('pam'), MMEJ search window ('rel_break' / 'seq'), gRNA ('guide'), and strand ('strand')
     '''
     
     breaks_list = []
@@ -97,7 +97,6 @@ def get_cut_sites(region, min_flanking_length, max_flanking_length, pam):
     chromosome, start, end, chr_seq = region
 
     seq = str(chr_seq[start:end].upper())
-    rev_seq = reverse_complement(seq)
 
     cuts = find_breaks(seq, min_flanking_length, max_flanking_length, pam)
 
