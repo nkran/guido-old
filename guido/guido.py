@@ -259,47 +259,55 @@ def evaluate_guides(cut_sites, n_patterns, variants):
     guides = []
 
     logger.info('Evaluating guides ...')
+    to_remove = []
 
-    for cut_site in cut_sites:
-        guide = {}
-        score = 0
-        oof_score = 0
-
-        # sort by pattern score
-        sorted_pattern_list = sorted(cut_site['pattern_list'], key=lambda x: x['pattern_score'], reverse=True)[:n_patterns]
-        guide_seq = cut_site['guide']
-
-        chromosome, guide_start, guide_end = cut_site['guide_loc']
-
-        # calculate SNP penalty
-        snp_score = 0
-        variants_in_guide = []
-
-        if variants:
-            for var in variants:
-                if guide_start <= var['start'] and guide_end >= var['end']:
-                    variants_in_guide.append(var)
-
-        if variants_in_guide:
-            # wt_prob = reduce(lambda x, y: x*y, [1 - sum(v.aaf) for v in variants_in_guide if v.aaf])
-            wt_prob = len(variants_in_guide)
+    for i, cut_site in enumerate(cut_sites):
+        
+        if 'N' in cut_site['seq']:
+            to_remove.append(i)
         else:
-            wt_prob = 1
+            guide = {}
+            score = 0
+            oof_score = 0
 
-        # calculate scores for MH in cut site
-        for pattern_dict in sorted_pattern_list:
-            if pattern_dict['frame_shift'] == "+":
-                oof_score += pattern_dict['pattern_score']
+            # sort by pattern score
+            sorted_pattern_list = sorted(cut_site['pattern_list'], key=lambda x: x['pattern_score'], reverse=True)[:n_patterns]
+            guide_seq = cut_site['guide']
 
-            score += pattern_dict['pattern_score']
+            chromosome, guide_start, guide_end = cut_site['guide_loc']
 
-        complete_score = oof_score / score * 100
-            
-        cut_site.update({'complete_score': complete_score})
-        cut_site.update({'sum_score': score})
-        cut_site.update({'variants': variants_in_guide})
-        cut_site.update({'top_patterns': sorted_pattern_list})
-        cut_site.update({'wt_prob': wt_prob})
+            # calculate SNP penalty
+            snp_score = 0
+            variants_in_guide = []
+
+            if variants:
+                for var in variants:
+                    if guide_start <= var['start'] and guide_end >= var['end']:
+                        variants_in_guide.append(var)
+
+            if variants_in_guide:
+                # wt_prob = reduce(lambda x, y: x*y, [1 - sum(v.aaf) for v in variants_in_guide if v.aaf])
+                wt_prob = len(variants_in_guide)
+            else:
+                wt_prob = 1
+
+            # calculate scores for MH in cut site
+            for pattern_dict in sorted_pattern_list:
+                if pattern_dict['frame_shift'] == "+":
+                    oof_score += pattern_dict['pattern_score']
+
+                score += pattern_dict['pattern_score']
+
+            complete_score = oof_score / score * 100
+
+            cut_site.update({'complete_score': complete_score})
+            cut_site.update({'sum_score': score})
+            cut_site.update({'variants': variants_in_guide})
+            cut_site.update({'top_patterns': sorted_pattern_list})
+            cut_site.update({'wt_prob': wt_prob})
+
+    for index in sorted(to_remove, reverse=True):
+        del cut_sites[index]
 
     return cut_sites
 

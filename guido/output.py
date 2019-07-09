@@ -23,6 +23,10 @@ def save_guides_list(cut_sites, output_folder, n_patterns):
         logger.info('Creating table with guides: {}'.format(filename))
 
         print("guide_sequence\tgenomic_location\texon_name\tstrand\toff_target_analysis\tMMEJ_score\tMMEJ_sum_score\tMMEJ_top_score\tSNP_count\twt_prob\tSNP_info\tMMEJ_out_of_frame_del", file = f)
+        
+        for c in cut_sites:
+            if 'complete_score' not in c.keys():
+                print(c['seq'], 'N' in c['seq'])
 
         for guide_dict in sorted(cut_sites, key=lambda x: (x['complete_score'], x['sum_score']), reverse=True):
             mmej_frames = ('\t'.join('{}'.format(pattern['frame_shift']) for pattern in guide_dict['top_patterns']))
