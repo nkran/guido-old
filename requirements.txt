@@ -1,4 +1,5 @@
 biopython==1.68
+bowtie==1.2.2
 scikit-allel==1.1.10
 argparse==1.4.0
 gffutils==0.9

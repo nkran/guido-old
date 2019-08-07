@@ -5,16 +5,16 @@ Guide designer
 ## Installation - option 1 (Conda)
 Make sure you have have Conda installed on your computer.
 
-### Create conda enviroment
+### Create conda environment
 ```
-conda create -n guido --file requirements.txt
+conda env create -f environment.yml
 ```
-### Enviroment with Guido
-After creating the enviroment you can activate it by using:
+### Environment with Guido
+After creating the environment you can activate it by using:
 ```
 source activate guido
 ```
-To get out of the enviroment use:
+To get out of the environment use:
 ```
 source deactivate
 ```
