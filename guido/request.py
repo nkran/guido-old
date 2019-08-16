@@ -66,6 +66,7 @@ def request_region_sequence(species, region):
 
 
 def request_gene_sequence(species, gene):
+    logger.info('Fetching gene information from VectorBase')
 
     path_seq = os.path.join('sequence', 'id', gene)
     path_info = os.path.join('overlap', 'id', gene + '?feature=gene')
@@ -76,6 +77,8 @@ def request_gene_sequence(species, gene):
 
 
 def request_region(species, region, ftype):
+    logger.info('Fetching genetic region from VectorBase')
+
     path = os.path.join('overlap', 'region', species, region + '?feature=' + ftype)
     info = make_get_request(path, 'json')
 

@@ -87,6 +87,7 @@ def find_breaks(sequence, min_flanking_length, max_flanking_length, pam):
     
     return all_breaks_list
 
+
 def get_cut_sites(region, min_flanking_length, max_flanking_length, pam):
     '''
     Get cutsites for positive and negative strand in the context
@@ -96,10 +97,6 @@ def get_cut_sites(region, min_flanking_length, max_flanking_length, pam):
     logger.info('Analysing sequence ...')
 
     chromosome, start, end, seq = region
-    rev_seq = reverse_complement(str(seq))
-
-    seq = str(chr_seq[start:end].upper())
-
     cuts = find_breaks(seq, min_flanking_length, max_flanking_length, pam)
 
     for cut in cuts:
@@ -107,9 +104,6 @@ def get_cut_sites(region, min_flanking_length, max_flanking_length, pam):
 
         cut.update({'break_abs': break_abs})
         cut.update({'guide_loc': (chromosome, break_abs - 17, break_abs + 3 + len(pam))})
-
-        cut.update({'left_flank_seq': seq[break_abs - 2000:break_abs]})
-        cut.update({'right_flank_seq': seq[break_abs:break_abs + 2000]})
 
     return cuts
 
@@ -317,6 +311,7 @@ def parse_args():
     
     parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence (TXT or FASTA).')
     parser.add_argument('--species', '-s', dest='species', help='Species. (Default: Anopheles gambiae)', default='anopheles_gambiae')
+    parser.add_argument('--local', dest='local', nargs='?', const=True, help='Use genome information from a local folder.', default=False)
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--pam', '-P', dest='pam', help='Protospacer adjacent motif (IUPAC format)', default='NGG')
@@ -337,8 +332,8 @@ def define_genomic_region(chromosome, start, end):
     for record in records:
         reference[record.id] = record
 
-    chr_seq = str(reference[chromosome].seq.upper())
-    region = (chromosome, start, end, chr_seq)
+    seq = str(reference[chromosome].seq.upper())[start:end]
+    region = (chromosome, start, end, seq)
 
     return region
 
@@ -359,6 +354,17 @@ def annotate_guides(cut_sites, ann_db):
 
 def main():
 
+    ascii_header = r'''
+                                                                
+                    _|_|_|            _|        _|            
+                  _|        _|    _|        _|_|_|    _|_|    
+                  _|  _|_|  _|    _|  _|  _|    _|  _|    _|  
+                  _|    _|  _|    _|  _|  _|    _|  _|    _|  
+                    _|_|_|    _|_|_|  _|    _|_|_|    _|_|    
+                                                                
+                    '''
+
+    print(ascii_header)
     logger.info("Let's dance!")
 
     args = parse_args()
@@ -369,9 +375,15 @@ def main():
 
     # sequence input -------------------------------------------------------
     if args.region or args.gene:
-        ann_db = gffutils.FeatureDB(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.7'), keep_order=True)
-    else:
-        ann_db = False
+        if args.local:
+            if os.path.exists(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.7')):
+                ann_db = gffutils.FeatureDB(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.7'), keep_order=True)
+            else:
+                # TODO
+                logger.error('Genome sequence and annotation do not exist. Please, run guido-build-reference to add a new genome.')
+                quit()
+        else:
+            ann_db = False
 
     if args.region and args.gene:
         logger.info('Please use only one option for genomic region selection. Use -r or -G.')
@@ -383,14 +395,34 @@ def main():
         '''
 
         logger.info('Using reference genome for {}. Region: {}'.format(args.species, args.region))
-        region = request_region_sequence(args.species, args.region)
+        if args.local:
+            chromosome = args.region.split(':')[0]
+            start = int(args.region.split(':')[1].split('-')[0])
+            end = int(args.region.split(':')[1].split('-')[1])
+            
+            region = define_genomic_region(chromosome, start, end)
+        else:
+            region = request_region_sequence(args.species, args.region)
 
     elif args.gene:
         '''
         Option -G: get genomic region from a gene name
         '''
         logger.info('Using AgamP4 reference genome. Gene: {}'.format(args.gene))
-        region = request_gene_sequence(args.species, args.gene)
+        if args.local:
+            try:
+                gene = ann_db[args.gene]
+            except:
+                logger.error('Gene not found: {}'.format(args.gene))
+                quit()
+
+            chromosome = gene.seqid
+            start = gene.start
+            end = gene.end
+
+            region = define_genomic_region(chromosome, start, end)
+        else:
+            region = request_gene_sequence(args.species, args.gene)
 
     elif args.sequence:
         '''
