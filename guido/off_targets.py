@@ -6,7 +6,7 @@ import log
 logger = log.createCustomLogger('off-targets')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
-def run_bowtie(cut_sites, genome_index_path):
+def run_bowtie(cut_sites, genome_index_path, output_folder):
 
     logger.info('Running Bowtie for off-targets detection ...')
 
@@ -39,7 +39,7 @@ def run_bowtie(cut_sites, genome_index_path):
 
             target_dict[b_id].append(target)
 
-    with open(os.path.join(ROOT_PATH, 'data', 'bowtie_off_targets.txt'), 'w') as ot_file:
+    with open(os.path.join(output_folder, 'bowtie_off_targets.txt'), 'w') as ot_file:
         ot_file.write(stdout)
 
     return target_dict

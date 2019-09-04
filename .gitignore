@@ -1,5 +1,9 @@
+.idea
 .vscode
 *.xlsx
 *.pyc
+build/
 other/
 results/
+ENV/
+guido/data
