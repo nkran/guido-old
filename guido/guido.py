@@ -131,7 +131,7 @@ def find_microhomologies(left_seq, right_seq):
         for i in range(len(left_seq) - k + 1):
             kmer = left_seq[i:i+k]
 
-            if kmer in right_seq:
+            if kmer in right_seq and kmer not in kmers:
                 kmers.append(kmer)
 
     return kmers
