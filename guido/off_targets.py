@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-import log
+import guido.log as log
 
 logger = log.createCustomLogger('off-targets')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
