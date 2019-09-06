@@ -9,7 +9,7 @@ import gffutils
 
 from Bio import SeqIO
 
-from output import save_guides_list, save_guides_list_simple, save_detailed_list, save_detailed_list_simple, save_to_bed
+import guido.log as log
 from off_targets import run_bowtie, off_target_evaluation
 
 

@@ -1,6 +1,6 @@
-from __future__ import print_function
 import os
-import log
+
+import guido.log as log
 
 logger = log.createCustomLogger('output')
 
