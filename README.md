@@ -1,7 +1,11 @@
-# Guido
-Guide designer
-
-
+                                                                
+                    _|_|_|            _|        _|            
+                  _|        _|    _|        _|_|_|    _|_|    
+                  _|  _|_|  _|    _|  _|  _|    _|  _|    _|  
+                  _|    _|  _|    _|  _|  _|    _|  _|    _|  
+                    _|_|_|    _|_|_|  _|    _|_|_|    _|_|    
+                                                                
+                    
 ## Installation - option 1 (Conda)
 Make sure you have have Conda installed on your computer.
 

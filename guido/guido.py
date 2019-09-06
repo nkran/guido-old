@@ -1,8 +1,8 @@
 import os
 import re
-import math
+import sys
 import argparse
-import itertools
+
 import log
 import vcf
 import gffutils
@@ -10,7 +10,7 @@ import gffutils
 from Bio import SeqIO
 
 import guido.log as log
-from off_targets import run_bowtie, off_target_evaluation
+from guido.mmej import simulate_end_joining
 
 
 logger = log.createCustomLogger('root')
@@ -360,8 +360,22 @@ def annotate_guides(cut_sites, ann_db, feature):
 
     return cut_sites
 
-def main():
 
+# ------------------------------------------------------------
+# Main
+# ------------------------------------------------------------
+def main():
+    ascii_header = r'''
+                                                                
+                    ||||||            ||        ||            
+                  ||        ||    ||        ||||||    ||||    
+                  ||  ||||  ||    ||  ||  ||    ||  ||    ||  
+                  ||    ||  ||    ||  ||  ||    ||  ||    ||  
+                    ||||||    ||||||  ||    ||||||    ||||    
+                                                                
+                    '''
+
+    print(ascii_header)
     logger.info("Let's dance!")
 
     args = parse_args()
@@ -371,7 +385,10 @@ def main():
     length_weight = args.length_weight
     feature = args.feature
 
-    # sequence input -------------------------------------------------------
+    # ------------------------------------------------------------
+    # Handle input arguments
+    # ------------------------------------------------------------
+
     if args.region or args.gene:
         ann_db = gffutils.FeatureDB(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.7'), keep_order=True)
     else:
