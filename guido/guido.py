@@ -3,10 +3,9 @@ import re
 import sys
 import argparse
 
-import log
 import vcf
 import gffutils
-
+import multiprocessing as mp
 from Bio import SeqIO
 
 import guido.log as log
@@ -17,46 +16,53 @@ logger = log.createCustomLogger('root')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
-def break_dict(sequence, pams, pam_len, max_flanking_length, strand):
+def fill_dict(sequence, start, pams, pam_len, max_flanking_length, region):
     '''
-    Create a list of dictionaries of all PAMs with information about:
+    Creates a list of dictionaries and returns a dataframe of all PAMs with information about:
     position ('break'), pam sequence ('pam'), MMEJ search window ('rel_break' / 'seq'), gRNA ('guide'), and strand ('strand')
     '''
-    
-    breaks_list = []
-    
+
+    cuts = []
+
     for pam in pams:
         
-        break_dict = {}
-        
+        cut_dict = {}
+        strand = region[3]
         br = pam - pam_len
         left = br - max_flanking_length
         if left < 0:
             left = 0
         right = br + max_flanking_length
-        
-        break_dict['rel_break'] = br - left
-        break_dict['break'] = br
-        break_dict['seq'] = sequence[left:right]
-        break_dict['pam'] = sequence[pam:pam+pam_len]
-        break_dict['guide'] = sequence[pam-20:pam+pam_len]
-        if strand == '+':
-            break_dict['strand'] = '+'
-        elif strand == '-':
-            break_dict['strand'] = '-'
-        
-        breaks_list.append(break_dict)
-    
-    return breaks_list
 
-def find_breaks(sequence, min_flanking_length, max_flanking_length, pam):
+        cut_dict['break'] = br
+        cut_dict['abs_break'] = br + start
+        cut_dict['rel_break'] = br - left
+        cut_dict['seq'] = sequence[left:right]
+        cut_dict['pam'] = sequence[pam:pam+pam_len]
+        cut_dict['guide'] = sequence[pam-20:pam+pam_len]
+        cut_dict['guide_loc'] = (region[0], cut_dict['abs_break'] - 17, cut_dict['abs_break'] + 3 + pam_len)
+        cut_dict['region'] = region
+
+        if strand == '+':
+            cut_dict['strand'] = '+'
+        elif strand == '-':
+            cut_dict['strand'] = '-'
+
+        if 'N' not in cut_dict['guide']:
+            cuts.append(cut_dict)
+
+    return cuts
+
+
+def find_breaks(region, min_flanking_length, max_flanking_length, pam):
     '''
-    Find Cas9-specific PAM motifs on both strands of a given sequence
+    Finds Cas9-specific PAM motifs on both strands of a given sequence
     Assumes SpCas9 / 'NGG'-motif by default
-    Keep only those which are more than 30 bp downstream
+    Keeps only those which are more than 30 bp downstream
     '''
     
-    logger.info('Finding PAMs ...')
+    chromosome, start, end, chr_seq = region
+    seq = str(chr_seq[start:end].upper())
     
     iupac_dict = {'A':'A',
                   'C':'C',
@@ -75,229 +81,16 @@ def find_breaks(sequence, min_flanking_length, max_flanking_length, pam):
                   'N':'[ACGT]'}
     iupac_pam = ''.join([iupac_dict[letter] for letter in pam])
     
-    complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
-    rev_seq = ''.join([complement[base] for base in sequence[::-1]])
-    
-    pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, sequence) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(sequence)]
+    rev_seq = rev_comp(seq)
+    pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(seq)]
     rev_pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, rev_seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(rev_seq)]
     pam_len = len(pam)
     
-    all_breaks_list = break_dict(sequence, pams, pam_len, max_flanking_length, '+') + break_dict(rev_seq, rev_pams, pam_len, max_flanking_length, '-')
+    # TODO: check if positions on - strand are correct
+    cuts_pos = fill_dict(seq, start, pams, pam_len, max_flanking_length, (chromosome, start, end, '+'))
+    cuts_neg = fill_dict(rev_seq, start, rev_pams, pam_len, max_flanking_length, (chromosome, start, end, '-'))
+    cut_sites = cuts_pos + cuts_neg
     
-    return all_breaks_list
-
-def get_cut_sites(region, min_flanking_length, max_flanking_length, pam):
-    '''
-    Get cutsites for positive and negative strand in the context
-    of provided genomic region.
-    '''
-
-    logger.info('Analysing sequence ...')
-
-    chromosome, start, end, chr_seq = region
-
-    seq = str(chr_seq[start:end].upper())
-
-    cuts = find_breaks(seq, min_flanking_length, max_flanking_length, pam)
-
-    for cut in cuts:
-        break_abs = cut['break'] + start
-
-        cut.update({'break_abs': break_abs})
-        cut.update({'guide_loc': (chromosome, break_abs - 17, break_abs + 3 + len(pam))})
-
-        cut.update({'left_flank_seq': chr_seq[break_abs - 2000:break_abs]})
-        cut.update({'right_flank_seq': chr_seq[break_abs:break_abs + 2000]})
-
-    return cuts
-
-
-def find_microhomologies(left_seq, right_seq):
-    '''
-    Start with predefined k-mer length and extend it until it finds more
-    than one match in sequence.
-    '''
-
-    # kmers list
-    kmers = []
-
-    # k-mer starting length
-    min_kmer_length = 2
-
-    # expand k-mer length
-    for k in reversed(xrange(min_kmer_length, len(left_seq))):
-
-        # iterate through sequence
-        for i in range(len(left_seq) - k + 1):
-            kmer = left_seq[i:i+k]
-
-            if kmer in right_seq and kmer not in kmers:
-                kmers.append(kmer)
-
-    return kmers
-
-
-def simulate_end_joining(cut_list, length_weight):
-    '''
-    Simulates end joining with microhomologies
-    '''
-
-    logger.info('Simulating MMEJ ...')
-
-    for i, cut in enumerate(cut_list):
-
-        br = cut['rel_break']
-        seq = cut['seq']
-
-        # create list for storing MH patterns
-        cut.update({'pattern_list': []})
-
-        # split sequence at the break
-        left_seq = seq[:br]
-        right_seq = seq[br:]
-
-        # find patterns in both sequences
-        patterns = find_microhomologies(left_seq, right_seq)
-
-        # iterate through patterns
-        for pattern in patterns:
-            p = re.compile(pattern)
-
-            # find positions of patterns in each sequence
-            left_positions = [m.start() for m in p.finditer(left_seq)]
-            right_positions = [m.start() for m in p.finditer(right_seq)]
-
-            # GC count for pattern
-            pattern_GC = len(re.findall('G', pattern)) + len(re.findall('C', pattern))
-
-            # get combinations
-            pos_combinations = list(itertools.product(left_positions, right_positions))
-
-            # generate microhomology for every combination
-            for combination in pos_combinations:
-                # save output to dict
-                pattern_dict = {}
-
-                # left side
-                left_seq_pos = combination[0]
-                left_deletion_length = len(left_seq) - left_seq_pos
-
-                # right side
-                right_seq_pos = combination[1]
-                right_deletion_length = right_seq_pos
-
-                # deletion length and sequence
-                deletion_length = left_deletion_length + right_deletion_length
-                deletion_seq = left_seq[left_seq_pos:] + right_seq[:right_seq_pos]
-
-                # score pattern
-                length_factor =  round(1 / math.exp((deletion_length) / (length_weight)), 3)
-                pattern_score = 100 * length_factor * ((len(pattern) - pattern_GC) + (pattern_GC * 2))
-
-                # frame shift
-                if deletion_length % 3 == 0:
-                    frame_shift = "-"
-                else:
-                    frame_shift = "+"
-
-                # create dictionary
-                pattern_dict['left'] = left_seq[:left_seq_pos] + '-' * left_deletion_length
-                pattern_dict['left_seq'] = left_seq[:left_seq_pos]
-                pattern_dict['left_seq_position'] = left_seq_pos
-                pattern_dict['right'] = '+' * right_deletion_length + right_seq[right_seq_pos:]
-                pattern_dict['right_seq'] = right_seq[right_seq_pos:]
-                pattern_dict['right_seq_position'] = left_seq_pos + len(deletion_seq)
-                pattern_dict['pattern'] = pattern
-                pattern_dict['pattern_score'] = pattern_score
-                pattern_dict['deletion_seq'] = deletion_seq
-                pattern_dict['frame_shift'] = frame_shift
-
-                # add to list
-                cut['pattern_list'].append(pattern_dict)
-
-        # remove duplicates and sub microhomologies
-        pattern_list_filtered = []
-
-        pattern_list = [dict(t) for t in set([tuple(sorted(pattern_dict.items())) for pattern_dict in cut['pattern_list']])]
-        for pattern_dict in sorted(pattern_list, key=lambda x: x['pattern_score']):
-
-            pass_array = []
-
-            # iterate over previously saved patterns
-            for x in pattern_list:
-
-                # if the pattern is substring of any previous pattern
-                if pattern_dict['pattern'] in x['pattern'] and pattern_dict['pattern'] != x['pattern']:
-
-                    # get offset position of substring
-                    offset_pattern = x['pattern'].find(pattern_dict['pattern'])
-                    offset_left = pattern_dict['left_seq_position'] - (x['left_seq_position'] + offset_pattern)
-                    offset_right = pattern_dict['right_seq_position'] - (x['right_seq_position'] + offset_pattern)
-
-                    if offset_left == 0 and offset_right == 0:
-                        pass_array.append(False)
-                    else:
-                        pass_array.append(True)
-                else:
-                    pass_array.append(True)
-
-            # keep only unique mh patterns
-            if all(pass_array):
-                pattern_list_filtered.append(pattern_dict)
-
-        cut.update({'pattern_list': pattern_list_filtered})
-
-    return cut_list
-
-
-def evaluate_guides(cut_sites, n_patterns, variants):
-    '''
-    Score guides and include information about SNPs and out-of-frame deletions
-    '''
-    guides = []
-
-    logger.info('Evaluating guides ...')
-
-    for cut_site in cut_sites:
-        guide = {}
-        score = 0
-        oof_score = 0
-
-        # sort by pattern score
-        sorted_pattern_list = sorted(cut_site['pattern_list'], key=lambda x: x['pattern_score'], reverse=True)[:n_patterns]
-        guide_seq = cut_site['guide']
-
-        chromosome, guide_start, guide_end = cut_site['guide_loc']
-
-        # calculate SNP penalty
-        snp_score = 0
-        variants_in_guide = []
-
-        if variants:
-            for var in variants:
-                if guide_start <= var.POS and guide_end >= var.POS:
-                    variants_in_guide.append(var)
-
-        if variants_in_guide:
-            wt_prob = reduce(lambda x, y: x*y, [1 - sum(v.aaf) for v in variants_in_guide if v.aaf])
-        else:
-            wt_prob = 1
-
-        # calculate scores for MH in cut site
-        for pattern_dict in sorted_pattern_list:
-            if pattern_dict['frame_shift'] == "+":
-                oof_score += pattern_dict['pattern_score']
-
-            score += pattern_dict['pattern_score']
-
-        complete_score = oof_score / score * 100
-
-        cut_site.update({'complete_score': complete_score})
-        cut_site.update({'sum_score': score})
-        cut_site.update({'variants': variants_in_guide})
-        cut_site.update({'top_patterns': sorted_pattern_list})
-        cut_site.update({'wt_prob': wt_prob})
-
     return cut_sites
 
 
@@ -468,22 +261,40 @@ def main():
         logger.error('No feature of this type detected. Features present in current database are the following: {}.'.format(', '.join(feature_types)))
         quit()
 
-    # execute main steps
-    cut_sites = get_cut_sites(region, min_flanking_length, max_flanking_length, args.pam)
-    cut_sites = simulate_end_joining(cut_sites, length_weight)
-    cut_sites = evaluate_guides(cut_sites, args.n_patterns, variants)
-
     if ann_db:
         cut_sites = annotate_guides(cut_sites, ann_db, feature)
 
-    target_dict = run_bowtie(cut_sites, os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4'))
-    cut_sites = off_target_evaluation(cut_sites, target_dict)
+    if not args.output_folder:
+        logger.error('No output folder selected. Please define it by using -o option.')
+        quit()
+    else:
+    
+        # ------------------------------------------------------------
+        # Execute
+        # ------------------------------------------------------------
 
-    if args.output_folder:
+        logger.info('Guido is dancing with {} threads ...'.format(args.n_threads))
+        pool = mp.Pool(args.n_threads)
+
+        logger.info('Analysing sequence ({} bp) ...'.format(region[2] - region[1]))
+        cut_sites = find_breaks(region, min_flanking_length, max_flanking_length, args.pam)
+
+        logger.info('Simulating MMEJ ...')
+        iterable_cut_sites = [(cut_site, args.n_patterns) for cut_site in cut_sites]
+        cut_sites = list(tqdm(pool.istarmap(simulate_end_joining, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
+        
+        logger.info('Add conservation and variation score ...')
+        cut_sites = apply_conservation_variation_score(cut_sites, args.conservation_store, variants, pool)
+
+        logger.info('Finding offtargets ...')
+        targets_df = run_bowtie(cut_sites, args.max_offtargets, args.n_threads)
+
+        pool.close()
 
         # create output dir if it doesn't exist
-        if not os.path.exists(args.output_folder):
-            os.makedirs(args.output_folder)
+        # # create output dir if it doesn't exist
+        # if not os.path.exists(args.output_folder):
+        #     os.makedirs(args.output_folder)
 
         if args.sequence:
             # simple output
