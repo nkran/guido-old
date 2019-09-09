@@ -1,77 +1,52 @@
 import os
 import subprocess
+import tempfile
+import pandas as pd
+from io import StringIO
+from tqdm import tqdm
 
 import guido.log as log
+from guido.helpers import chunks, rev_comp
 
 logger = log.createCustomLogger('off-targets')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
-def run_bowtie(cut_sites, genome_index_path):
 
-    logger.info('Running Bowtie for off-targets detection ...')
+def run_bowtie(cut_sites, max_offtargets, threads):
+    genome_index_path = os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4')
+    mismatches = 3
 
-    missmatches = 3
-    reported_aln = 10
-
-    guides = ",".join([cut_site['guide'] for cut_site in cut_sites])
+    # create temporary file for bowtie input
+    temp = tempfile.NamedTemporaryFile(mode='w+t', prefix="guido_")
+    temp.write('\n'.join(['>seq|{}|{}|{}|{}\n{}'.format(i, cut['guide_loc'][0], cut['guide_loc'][1], cut['guide'], cut['guide']) for i, cut in enumerate(cut_sites)]))
 
     # run bowtie alignment
-    bowtie_command = 'bowtie -a -v {} -l 23 --suppress 6 {} -c {}'.format(missmatches, genome_index_path, guides)
+    bowtie_command = 'bowtie -p {} -v {} --sam --sam-nohead -k {} {} -f {}'.format(threads, mismatches, max_offtargets, genome_index_path, temp.name)
     rproc = subprocess.Popen(bowtie_command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     stdout, stderr = rproc.communicate()
 
-    target_dict = {}
+    # output bowtie to pandas dataframe
+    targets = pd.read_csv(StringIO(stdout), sep='\t', names=list(range(14)),
+                          header=None, index_col=False, converters={3:int})
+    
+    # split sequence identification
+    nsplit = targets[0].str.split('|', n = 4, expand = True)
+    nsplit.columns = ['s', 'id', 'start', 'end', 'seq']
 
-    for line in stdout.split(os.linesep):
-        if line:
-            b_id, b_strand, b_chromosome, b_start, b_seq, b_reps, b_mm = line.split('\t')
+    # add it back to the target df
+    targets = pd.concat([targets, nsplit.iloc[:,1:]], axis=1)
 
-            if b_id not in target_dict.keys():
-                target_dict[b_id] = []
+    # extract the number of mismatches in the off-target
+    targets['mm'] = targets.apply(lambda x: x[13].split(':')[-1], axis=1)
 
-            target = {
-                'strand': b_strand,
-                'chromosome': b_chromosome,
-                'start': int(b_start),
-                'reps': int(b_reps),
-                'mismatches': b_mm
-            }
+    # count off-targets for a given guide
+    mismatches_count = targets.groupby(['id'])['mm'].value_counts().unstack().fillna(0).reset_index()
+    mismatches_count['id'] = mismatches_count['id'].astype(int)
+    
+    # add mismatch info to the guide dict
+    for ix, x in mismatches_count.iterrows():
+        i = int(x.id)
+        cut_sites[i]['mm'] = x[['0', '1', '2', '3']].to_dict()
+    
+    return cut_sites, targets
 
-            target_dict[b_id].append(target)
-
-    with open(os.path.join(ROOT_PATH, 'data', 'bowtie_off_targets.txt'), 'w') as ot_file:
-        ot_file.write(stdout)
-
-    return target_dict
-
-
-def off_target_evaluation(cut_sites, target_dict):
-
-    logger.info('Evaluating off-targets ...')
-
-    for tid in sorted(target_dict.keys(), key=lambda x: int(x)):
-
-        targets = target_dict[tid]
-        cut = cut_sites[int(tid)]
-
-        cut_chromosome, cut_start, cut_end = cut['guide_loc']
-        cut.update({'off_targets': {
-                        'count': [0, 0, 0, 0], # off-targets with 0, 1, 2, 3 mismatches
-                        'ot': []
-                    }})
-
-        for target in targets:
-            # if the hit is not on-target
-            if target['start'] not in range(cut_start - 1, cut_start + 1) and target['chromosome'] != cut_chromosome:
-
-                # append information about off-target
-                cut['off_targets']['ot'].append(target)
-
-                # split mismatch string by ',' and count the number of mismatches
-                # filter out empty string after splitting
-                missmatches = len(filter(None, target['mismatches'].split(',')))
-
-                # add to the mismatches counter
-                cut['off_targets']['count'][missmatches] += 1
-
-    return cut_sites
