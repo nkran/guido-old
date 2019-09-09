@@ -11,9 +11,10 @@ from Bio import SeqIO
 
 import guido.log as log
 from guido.mmej import simulate_end_joining
+from guido.output import save_guides_list, save_guides_list_simple, save_detailed_list, save_detailed_list_simple, save_to_bed
 from guido.off_targets import run_bowtie
+from guido.conservation import apply_conservation_variation_score
 from guido.helpers import istarmap, rev_comp
-
 
 logger = log.createCustomLogger('root')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
@@ -104,6 +105,7 @@ def parse_args():
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
+    parser.add_argument('--conservation', '-c', dest='conservation_store', help='Path to Zarr store with conservation data.')
     parser.add_argument('--pam', '-P', dest='pam', help='Protospacer adjacent motif (IUPAC format)', default='NGG')
     parser.add_argument('--threads', '-t', dest='n_threads', type=int, help='Number of threads used.', default=1)
     parser.add_argument('--max-flanking', '-M', type=int, dest='max_flanking_length', help='Max length of flanking region.', default=40)
@@ -129,11 +131,13 @@ def define_genomic_region(chromosome, start, end):
 
     return region
 
+
 def annotate_guides(cut_sites, ann_db, feature):
     '''
     Use GFF annotation to annotate guides
     (Optional - feature) Only keep guides that are located on a given type of genomic feature
     '''
+    logger.info("Annotating ...")
 
     for cut_site in cut_sites[:]:
         location = cut_site['guide_loc']
@@ -297,20 +301,19 @@ def main():
 
         pool.close()
 
-        # create output dir if it doesn't exist
+        # logger.info('Output time ...')
         # # create output dir if it doesn't exist
         # if not os.path.exists(args.output_folder):
         #     os.makedirs(args.output_folder)
 
-        if args.sequence:
-            # simple output
-            save_guides_list_simple(cut_sites, args.output_folder, args.n_patterns)
-            save_detailed_list_simple(cut_sites, args.output_folder, args.n_patterns)
-        else:
-            save_guides_list(cut_sites, args.output_folder, args.n_patterns)
-            save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
-            save_to_bed(cut_sites, args.output_folder, args.n_patterns)
+        # if args.sequence:
+        #     # simple output
+        #     save_guides_list_simple(cut_sites, args.output_folder, args.n_patterns)
+        #     save_detailed_list_simple(cut_sites, args.output_folder, args.n_patterns)
+        # else:
+        #     save_guides_list(cut_sites, args.output_folder, args.n_patterns)
+        #     # save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
+        #     # save_to_bed(cut_sites, args.output_folder, args.n_patterns)
 
-    else:
-        logger.error('No output folder selected. Please define it by using -o option.')
-        quit()
+        # else:
+        #     quit()
