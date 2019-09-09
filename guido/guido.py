@@ -6,10 +6,13 @@ import argparse
 import vcf
 import gffutils
 import multiprocessing as mp
+from tqdm import tqdm
 from Bio import SeqIO
 
 import guido.log as log
 from guido.mmej import simulate_end_joining
+from guido.off_targets import run_bowtie
+from guido.helpers import istarmap, rev_comp
 
 
 logger = log.createCustomLogger('root')
@@ -102,14 +105,17 @@ def parse_args():
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
     parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
     parser.add_argument('--pam', '-P', dest='pam', help='Protospacer adjacent motif (IUPAC format)', default='NGG')
+    parser.add_argument('--threads', '-t', dest='n_threads', type=int, help='Number of threads used.', default=1)
     parser.add_argument('--max-flanking', '-M', type=int, dest='max_flanking_length', help='Max length of flanking region.', default=40)
     parser.add_argument('--min-flanking', '-m', type=int, dest='min_flanking_length', help='Min length of flanking region.', default=25)
     parser.add_argument('--length-weight', '-w', type=float, dest='length_weight', help='Length weight - used in scoring.', default=20.0)
+    parser.add_argument('--max-offtargets', type=int, dest='max_offtargets', help='Max number of reported offtargets', default=100)
     parser.add_argument('--n-patterns', '-p', type=int, dest='n_patterns', help='Number of MH patterns used in guide evaluation.', default=5)
     parser.add_argument('--output-folder', '-o', dest='output_folder', help="Output folder.")
     parser.add_argument('--feature-type', '-f', dest='feature', help='Type of genomic feature to focus guide search on.', default=None)
 
     return parser.parse_args()
+
 
 def define_genomic_region(chromosome, start, end):
     records = SeqIO.parse(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.fa'), "fasta")
