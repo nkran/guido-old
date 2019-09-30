@@ -1,28 +1,52 @@
 import os
 import subprocess
+import h5py
 import zarr
+import allel
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
 import guido.log as log
 
+logger = log.createCustomLogger('Conservation and variation')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
-def fetch_convar_score(cut_site, z, variation):
+def fetch_convar_score(cut_site, conservation, var_callset):
     '''
     Returns mean conservation score and evaluates SNPs within the guide site
     '''
 
-    # TODO: add positional variation
-
+    # Calculate conservation score
     chrom, start, end = cut_site['guide_loc']
-    cut_site['cons_score'] = np.mean(z['joined/{}/score/'.format(chrom)][3,start:end])
+    cut_site['cons_score'] = np.mean(conservation['joined/{}/score/'.format(chrom)][3,start:end])
+
+    variants = var_callset[chrom]['variants']
+    calldata = var_callset[chrom]['calldata']
+    pos = allel.SortedIndex(variants['POS'])
+
+    cut_site['variants'] = {}
+
+    try:
+        loc = pos.locate_range(start, end)
+        g = allel.GenotypeArray(calldata['GT'][loc])
+        positions = list(variants['POS'][loc])
+        alt_alleles = variants['ALT'][loc]
+        
+        cut_site['variants'] = {
+            'pos': variants['POS'][loc], 
+            'alt': variants['ALT'][loc], 
+            'ref': variants['REF'][loc],
+            'allel_count': np.array(g.count_alleles())
+            }
+    except:
+        pass
 
     return cut_site
 
 
-def apply_conservation_variation_score(cut_sites, store_location, variation, pool):
+def apply_conservation_variation_score(cut_sites, conservation_store, variation_store, pool):
     '''
     STORE STRUCTURE:
     scores
@@ -47,24 +71,7 @@ def apply_conservation_variation_score(cut_sites, store_location, variation, poo
                 - AaegL5 
                 - AalbS2 
                 - AaraD1 
-                - AatrE3 
-                - AchrA1 
-                - AcolM1 
-                - AculA1 
-                - AdarC3 
-                - AdirW1
-                - AepiE1
-                - AfarF2
-                - AfunF1
-                - AmacM1
-                - AmelC2
-                - AmerM2
-                - AminM1
-                - AquaS1
-                - AsinC2
-                - AsteI2
-                - CpipJ2
-                - DmelP6
+                ...
             - weighted_averages (21, 2L len)
                 - ... each genome
             - score (5, 2L len)
@@ -93,10 +100,43 @@ def apply_conservation_variation_score(cut_sites, store_location, variation, poo
             mean_long_sliding_big = np.array(pd.DataFrame(np.mean(identity_long, axis=0)).rolling(5000, win_type ='hamming', center=True).mean())
     '''
 
-    # open Zarr store
-    z = zarr.open(store_location, 'r')
-    
-    iterable_cut_sites = [(cut_site, z, variation) for cut_site in cut_sites]
+    '''
+        2L
+            calldata
+                GT (1497107, 20, 2) int8
+            samples (20,) object
+            variants
+                ALT (1497107, 3) object
+                CHROM (1497107,) object
+                FILTER_PASS (1497107,) bool
+                ID (1497107,) object
+                POS (1497107,) int32
+                QUAL (1497107,) float32
+                REF (1497107,) object
+    '''
+
+    # handle variation file type
+    if os.path.exists(variation_store):
+        var_path, var_ext = os.path.splitext(variation_store)
+
+        if var_ext == '.vcf':
+            logger.info('Reading VCF file. To speed up the process transform your file into HDF5 or Zarr format.')
+            var_callset = allel.read_vcf(variation_store)
+        elif var_ext == '.h5' or var_ext == '.hdf5':
+            var_callset = h5py.File(variation_store, mode='r')
+        elif var_ext == '.zarr':
+            var_callset = zarr.open(variation_store, 'r')
+        else:
+            logger.error('Variation file could not be opened. Please check the supported file formats.')
+            quit()
+    else:
+        logger.error('Variation file could not be opened. Please check the supported file formats.')
+        quit()
+
+    # open conservation store
+    conservation = zarr.open(conservation_store, 'r')
+
+    iterable_cut_sites = [(cut_site, conservation, var_callset) for cut_site in cut_sites]
     cut_sites = list(tqdm(pool.istarmap(fetch_convar_score, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
 
     return cut_sites
