@@ -104,8 +104,8 @@ def parse_args():
     parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence (TXT or FASTA).')
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
-    parser.add_argument('--variants', '-v', dest='variants', help='VCF file with variants.')
-    parser.add_argument('--conservation', '-c', dest='conservation_store', help='Path to Zarr store with conservation data.')
+    parser.add_argument('--variants', '-v', dest='variation_store', help='VCF file with variants.', default=False)
+    parser.add_argument('--conservation', '-c', dest='conservation_store', help='Path to Zarr store with conservation data.', default=False)
     parser.add_argument('--pam', '-P', dest='pam', help='Protospacer adjacent motif (IUPAC format)', default='NGG')
     parser.add_argument('--threads', '-t', dest='n_threads', type=int, help='Number of threads used.', default=1)
     parser.add_argument('--max-flanking', '-M', type=int, dest='max_flanking_length', help='Max length of flanking region.', default=40)
@@ -113,6 +113,8 @@ def parse_args():
     parser.add_argument('--length-weight', '-w', type=float, dest='length_weight', help='Length weight - used in scoring.', default=20.0)
     parser.add_argument('--max-offtargets', type=int, dest='max_offtargets', help='Max number of reported offtargets', default=100)
     parser.add_argument('--n-patterns', '-p', type=int, dest='n_patterns', help='Number of MH patterns used in guide evaluation.', default=5)
+    parser.add_argument('--disable-mmej', dest='disable_mmej', type=bool, nargs='?', const=True, help="Disable MMEJ prediction.", default=False)
+    parser.add_argument('--disable-off-targets', dest='disable_offtargets', type=bool, nargs='?', const=True, help="Disable off-targets search.", default=False)
     parser.add_argument('--output-folder', '-o', dest='output_folder', help="Output folder.")
     parser.add_argument('--feature-type', '-f', dest='feature', help='Type of genomic feature to focus guide search on.', default=None)
 
@@ -249,19 +251,6 @@ def main():
     else:
         region = ('seq', 0, 0, False)
 
-    # variants input -------------------------------------------------------
-    if all(region) and args.variants:
-        '''
-        Option -v: get variants from VCF file
-        '''
-        with open(args.variants, 'r') as vcf_file:
-            vcf_reader = vcf.Reader(vcf_file)
-
-            logger.info('Reading VCF for region {}:{}-{}'.format(chromosome, start, end))
-            variants = [v for v in vcf_reader.fetch(chromosome, start, end)]
-    else:
-        variants = []
-
     if not args.region and not args.sequence and not args.gene:
         logger.error('Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.')
         quit()
@@ -289,15 +278,18 @@ def main():
         logger.info('Analysing sequence ({} bp) ...'.format(region[2] - region[1]))
         cut_sites = find_breaks(region, min_flanking_length, max_flanking_length, args.pam)
 
-        logger.info('Simulating MMEJ ...')
-        iterable_cut_sites = [(cut_site, args.n_patterns) for cut_site in cut_sites]
-        cut_sites = list(tqdm(pool.istarmap(simulate_end_joining, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
+        if not args.disable_mmej:
+            logger.info('Simulating MMEJ ...')
+            iterable_cut_sites = [(cut_site, args.n_patterns) for cut_site in cut_sites]
+            cut_sites = list(tqdm(pool.istarmap(simulate_end_joining, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
         
-        logger.info('Add conservation and variation score ...')
-        cut_sites = apply_conservation_variation_score(cut_sites, args.conservation_store, variants, pool)
-
-        logger.info('Finding offtargets ...')
-        targets_df = run_bowtie(cut_sites, args.max_offtargets, args.n_threads)
+        if args.conservation_store or args.variation_store:
+            logger.info('Analysing conservation and variation in guides ...')
+            cut_sites = apply_conservation_variation_score(cut_sites, args.conservation_store, args.variation_store, pool)
+        
+        if not args.disable_offtargets:
+            logger.info('Finding offtargets ...')
+            cut_sites, targets_df = run_bowtie(cut_sites, args.max_offtargets, args.n_threads)
 
         pool.close()
 
