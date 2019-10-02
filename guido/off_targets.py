@@ -46,7 +46,8 @@ def run_bowtie(cut_sites, max_offtargets, threads):
     # add mismatch info to the guide dict
     for ix, x in mismatches_count.iterrows():
         i = int(x.id)
+        x['0'] = x['0'] - 1
         cut_sites[i]['mm'] = x[['0', '1', '2', '3']].to_dict()
-    
+
     return cut_sites, targets
 
