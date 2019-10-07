@@ -314,7 +314,8 @@ def parse_args():
     parser.add_argument('--length-weight', '-w', type=float, dest='length_weight', help='Length weight - used in scoring.', default=20.0)
     parser.add_argument('--n-patterns', '-p', type=int, dest='n_patterns', help='Number of MH patterns used in guide evaluation.', default=5)
     parser.add_argument('--output-folder', '-o', dest='output_folder', help="Output folder.")
-    
+    parser.add_argument('--feature-type', '-f', dest='feature', help='Type of genomic feature to focus guide search on.', default=None)
+
     return parser.parse_args()
 
 def define_genomic_region(chromosome, start, end):
@@ -329,16 +330,20 @@ def define_genomic_region(chromosome, start, end):
 
     return region
 
-def annotate_guides(cut_sites, ann_db):
+def annotate_guides(cut_sites, ann_db, feature):
     '''
     Use GFF annotation to annotate guides
     '''
 
-    for cut_site in cut_sites:
+    for cut_site in cut_sites[:]:
         location = cut_site['guide_loc']
 
-        features = [f for f in ann_db.region(seqid=location[0], start=location[1], end=location[2])]
-        cut_site.update({'annotation': features})
+        features = [f for f in ann_db.region(seqid=location[0], start=location[1], end=location[2], featuretype=feature)]
+
+        if feature is not None and not features:
+            cut_sites.remove(cut_site)
+        else:
+            cut_site.update({'annotation': features})
 
     return cut_sites
 
@@ -351,6 +356,7 @@ def main():
     max_flanking_length = args.max_flanking_length
     min_flanking_length = args.min_flanking_length
     length_weight = args.length_weight
+    feature =args.feature
 
     # sequence input -------------------------------------------------------
     if args.region or args.gene:
@@ -433,7 +439,7 @@ def main():
     cut_sites = evaluate_guides(cut_sites, args.n_patterns, variants)
 
     if ann_db:
-        cut_sites = annotate_guides(cut_sites, ann_db)
+        cut_sites = annotate_guides(cut_sites, ann_db, feature)
 
     target_dict = run_bowtie(cut_sites, os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4'))
     cut_sites = off_target_evaluation(cut_sites, target_dict)
