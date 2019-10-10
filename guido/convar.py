@@ -27,12 +27,11 @@ def fetch_convar_score(cut_site, conservation, var_callset):
     pos = allel.SortedIndex(variants['POS'])
 
     cut_site['variants'] = {}
+    cut_site['variants_n'] = 0
 
     try:
         loc = pos.locate_range(start, end)
         g = allel.GenotypeArray(calldata['GT'][loc])
-        positions = list(variants['POS'][loc])
-        alt_alleles = variants['ALT'][loc]
         
         cut_site['variants'] = {
             'pos': variants['POS'][loc], 
@@ -40,6 +39,9 @@ def fetch_convar_score(cut_site, conservation, var_callset):
             'ref': variants['REF'][loc],
             'allel_count': np.array(g.count_alleles())
             }
+        cut_site['variants_zipped'] = list(zip(*cut_site['variants'].values()))
+        cut_site['variants_n'] = len(variants['POS'][loc])
+        
     except:
         pass
 
