@@ -20,7 +20,7 @@ logger = log.createCustomLogger('root')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
-def fill_dict(sequence, start, pams, pam_len, max_flanking_length, region):
+def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
     '''
     Creates a list of dictionaries and returns a dataframe of all PAMs with information about:
     position ('break'), pam sequence ('pam'), MMEJ search window ('rel_break' / 'seq'), gRNA ('guide'), and strand ('strand')
@@ -28,30 +28,43 @@ def fill_dict(sequence, start, pams, pam_len, max_flanking_length, region):
 
     cuts = []
 
-    for pam in pams:
+    for pam_loc in pams:
         
         cut_dict = {}
-        strand = region[3]
-        br = pam - pam_len
-        left = br - max_flanking_length
-        if left < 0:
-            left = 0
-        right = br + max_flanking_length
+        r_chrom, r_start, r_end, r_strand = region
+        r_length = r_end - r_start
 
-        cut_dict['break'] = br
-        cut_dict['abs_break'] = br + start
-        cut_dict['rel_break'] = br - left
-        cut_dict['seq'] = sequence[left:right]
-        cut_dict['pam'] = sequence[pam:pam+pam_len]
-        cut_dict['guide'] = sequence[pam-20:pam+pam_len]
-        cut_dict['guide_loc'] = (region[0], cut_dict['abs_break'] - 17, cut_dict['abs_break'] + 3 + pam_len)
+        # relative cut from the start of the sequence from region obj
+        # always 5' -> 3'
+        relative_cut_pos = pam_loc - 3
+        left_slice = relative_cut_pos - max_flanking_length
+        right_slice = relative_cut_pos + max_flanking_length
+
+        if left_slice < 0:
+            left_slice = 0
+        if right_slice > r_length:
+            right_slice = r_length
+
+        seq_slice = slice(left_slice, right_slice)
+
+        if r_strand == '+':
+            absolute_cut_pos = r_start + pam_loc - 3
+            guide_location = (r_chrom, absolute_cut_pos - 17, absolute_cut_pos + 3 + pam_len)
+
+        if r_strand == '-':
+            absolute_cut_pos = r_end - pam_loc + 3
+            guide_location = (r_chrom, absolute_cut_pos - 3 - pam_len, absolute_cut_pos + 17)
+
+        cut_dict['pam'] = sequence[pam_loc:pam_loc+pam_len]
+        cut_dict['absolute_cut_pos'] = absolute_cut_pos
+        cut_dict['relative_cut_pos'] = relative_cut_pos
+        cut_dict['relative_cut_pos_seq'] = relative_cut_pos - left_slice
+        cut_dict['seq'] = sequence[seq_slice]
+        cut_dict['guide'] = sequence[pam_loc-20:pam_loc+pam_len]
+        cut_dict['guide_loc'] = guide_location
         cut_dict['region'] = region
-
-        if strand == '+':
-            cut_dict['strand'] = '+'
-        elif strand == '-':
-            cut_dict['strand'] = '-'
-
+        cut_dict['strand'] = r_strand
+        
         if 'N' not in cut_dict['guide']:
             cuts.append(cut_dict)
 
@@ -89,12 +102,11 @@ def find_breaks(region, min_flanking_length, max_flanking_length, pam):
     pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(seq)]
     rev_pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, rev_seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(rev_seq)]
     pam_len = len(pam)
-    
-    # TODO: check if positions on - strand are correct
-    cuts_pos = fill_dict(seq, start, pams, pam_len, max_flanking_length, (chromosome, start, end, '+'))
-    cuts_neg = fill_dict(rev_seq, start, rev_pams, pam_len, max_flanking_length, (chromosome, start, end, '-'))
+
+    cuts_pos = fill_dict(seq, pams, pam_len, max_flanking_length, (chromosome, start, end, '+'))
+    cuts_neg = fill_dict(rev_seq, rev_pams, pam_len, max_flanking_length, (chromosome, start, end, '-'))
     cut_sites = cuts_pos + cuts_neg
-    
+
     return cut_sites
 
 
