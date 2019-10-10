@@ -130,11 +130,9 @@ def simulate_end_joining(cut_site, n_patterns):
         cut_site['mmej_patterns'] = sorted_mmej_patterns
         cut_site['complete_score'] = complete_score
         cut_site['sum_score'] = score
-        cut_site['mmej_patterns'] = sorted_mmej_patterns
     else:
         cut_site['mmej_patterns'] = []
         cut_site['complete_score'] = 0
         cut_site['sum_score'] = 0
-        cut_site['mmej_patterns'] = 0
     
     return cut_site

@@ -3,17 +3,18 @@ import re
 import sys
 import argparse
 
-import vcf
 import gffutils
 import multiprocessing as mp
 from tqdm import tqdm
 from Bio import SeqIO
 
+import pandas as pd
+
 import guido.log as log
 from guido.mmej import simulate_end_joining
-from guido.output import save_guides_list, save_guides_list_simple, save_detailed_list, save_detailed_list_simple, save_to_bed
+from guido.output import render_output
 from guido.off_targets import run_bowtie
-from guido.conservation import apply_conservation_variation_score
+from guido.convar import apply_conservation_variation_score
 from guido.helpers import istarmap, rev_comp
 
 logger = log.createCustomLogger('root')
@@ -106,7 +107,8 @@ def find_breaks(region, min_flanking_length, max_flanking_length, pam):
     cuts_pos = fill_dict(seq, pams, pam_len, max_flanking_length, (chromosome, start, end, '+'))
     cuts_neg = fill_dict(rev_seq, rev_pams, pam_len, max_flanking_length, (chromosome, start, end, '-'))
     cut_sites = cuts_pos + cuts_neg
-
+    cut_sites = sorted(cut_sites, key=lambda x: x['guide_loc'])
+     
     return cut_sites
 
 
@@ -184,11 +186,11 @@ def annotate_guides(cut_sites, ann_db, feature):
 def main():
     ascii_header = r'''
                                                                 
-                    ||||||            ||        ||            
-                  ||        ||    ||        ||||||    ||||    
-                  ||  ||||  ||    ||  ||  ||    ||  ||    ||  
-                  ||    ||  ||    ||  ||  ||    ||  ||    ||  
-                    ||||||    ||||||  ||    ||||||    ||||    
+                    ||||||            ||        ||              
+                  ||        ||    ||        ||||||    ||||      
+                  ||  ||||  ||    ||  ||  ||    ||  ||    ||    
+                  ||    ||  ||    ||  ||  ||    ||  ||    ||    
+                    ||||||    ||||||  ||    ||||||    ||||      
                                                                 
                     '''
 
@@ -294,26 +296,27 @@ def main():
             logger.info('Simulating MMEJ ...')
             iterable_cut_sites = [(cut_site, args.n_patterns) for cut_site in cut_sites]
             cut_sites = list(tqdm(pool.istarmap(simulate_end_joining, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
-        
+
         if args.conservation_store or args.variation_store:
             logger.info('Analysing conservation and variation in guides ...')
             cut_sites = apply_conservation_variation_score(cut_sites, args.conservation_store, args.variation_store, pool)
-        
+
         if not args.disable_offtargets:
             logger.info('Finding offtargets ...')
             cut_sites, targets_df = run_bowtie(cut_sites, args.max_offtargets, args.n_threads)
 
         pool.close()
 
-        # logger.info('Output time ...')
-        # # create output dir if it doesn't exist
-        # if not os.path.exists(args.output_folder):
-        #     os.makedirs(args.output_folder)
+        logger.info('Preparing output files ...')
+        if not os.path.exists(args.output_folder):
+            os.makedirs(args.output_folder)
+
+        render_output(cut_sites, targets_df, args.output_folder)
 
         # if args.sequence:
-        #     # simple output
-        #     save_guides_list_simple(cut_sites, args.output_folder, args.n_patterns)
-        #     save_detailed_list_simple(cut_sites, args.output_folder, args.n_patterns)
+            # simple output
+            # save_guides_list_simple(cut_sites, args.output_folder, args.n_patterns)
+            # save_detailed_list_simple(cut_sites, args.output_folder, args.n_patterns)
         # else:
         #     save_guides_list(cut_sites, args.output_folder, args.n_patterns)
         #     # save_detailed_list(cut_sites, args.output_folder, args.n_patterns)

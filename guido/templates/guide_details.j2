@@ -1,0 +1,49 @@
+{% for cut_site in cut_sites -%}
+{% set cix = loop.index0 %}
+---
+Guide sequence: {{ cut_site.guide }}
+Location: {{ cut_site.guide_loc[0] }}:{{ cut_site.guide_loc[1] }}-{{ cut_site.guide_loc[2] }} | Strand: {{ cut_site.strand }}
+MMEJ Score: {{ '%0.2f' % cut_site.complete_score }} MMEJ sum score: {{ '%0.2f' % cut_site.sum_score }}
+
+Top MMEJ patterns
+{% if cut_site.mmej_patterns|length > 0 %}
+{% for ix, pattern in cut_site.mmej_patterns.iterrows() -%}
+{{ pattern.left }}{{ pattern.right }}	{{ pattern.pattern }}	{{ pattern.deletion_seq }}	{{ '%0.2f' % pattern.pattern_score }}	{{pattern.frame_shift}}
+{% endfor %}
+{% else -%}
+    MMEJ patterns were not generated because the sequence is not complete (contains 'N').
+{% endif %}
+
+{% if cut_site.variants_n > 0 -%}
+    Variation ({{ cut_site.variants_n }})
+{% if cut_site.strand == '-' -%}
+    {{ cut_site.guide | rev_comp}}
+{% else -%}
+    {{ cut_site.guide}}
+{% endif -%}
+{% for v in cut_site.variants_zipped -%}
+    {% set offset_l = v[0]|int - cut_site.guide_loc[1] - 1 -%}
+    {% set offset_r = cut_site.guide|length - offset_l - 1 -%}
+    {% for i in range(0, offset_l) -%} {{ '.' -}} {% endfor -%}
+        {{ v[1][0] -}} 
+    {% for i in range(0, offset_r) -%} {{ '.' -}} {% endfor %}
+    {{- "  " }}{{ v[0]|int -}}{{- "  " }}{{- v[3][1] / v[3]|sum }}
+    {{- "  " }}{{- v[3][0]|string + "[" + v[2] + "]/" + v[3][1]|string + "[" + v[1][0] + "]" }}
+{% endfor -%}
+{% else -%}
+    No SNPs found at the target sequence.
+{% endif %}
+
+Conservation score: {{ cut_site.cons_score }}
+
+{% if cix in targets_grp.keys() %}
+Off-targets {{ cut_site.offtargets_str }}
+{% for target in targets_grp[cix] -%}
+{{ target.9 }}
+{{ target.diff }}	{{ target.2 }}:{{ target.3 }}
+{% endfor %}
+{% else %}
+No off-targets found
+{% endif %}
+---
+{% endfor %}
