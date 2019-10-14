@@ -333,17 +333,28 @@ def define_genomic_region(chromosome, start, end):
 def annotate_guides(cut_sites, ann_db, feature):
     '''
     Use GFF annotation to annotate guides
+    (Optional) Only keep guides that are located on a given type of genomic feature
     '''
 
     for cut_site in cut_sites[:]:
         location = cut_site['guide_loc']
 
-        features = [f for f in ann_db.region(seqid=location[0], start=location[1], end=location[2], featuretype=feature)]
+        # Determine if the cut site is located on a gene. If so, remove that cut site from further consideration.
+        if feature == 'intergenic':
+            features = [f for f in ann_db.region(seqid=location[0], start=location[1], end=location[2], featuretype='gene')]
+            if features:
+                cut_sites.remove(cut_site)
+            else:
+                cut_site.update({'annotation': features})
 
-        if feature is not None and not features:
-            cut_sites.remove(cut_site)
+        # If feature is None (default), simply annotate all guides/cut_sites
+        # If feature is not None or 'intergenic' determine if the cut site is located on that type of feature and remove any others.
         else:
-            cut_site.update({'annotation': features})
+            features = [f for f in ann_db.region(seqid=location[0], start=location[1], end=location[2], featuretype=feature)]
+            if feature is not None and not features:
+                cut_sites.remove(cut_site)
+            else:
+                cut_site.update({'annotation': features})
 
     return cut_sites
 
@@ -356,7 +367,7 @@ def main():
     max_flanking_length = args.max_flanking_length
     min_flanking_length = args.min_flanking_length
     length_weight = args.length_weight
-    feature =args.feature
+    feature = args.feature
 
     # sequence input -------------------------------------------------------
     if args.region or args.gene:
