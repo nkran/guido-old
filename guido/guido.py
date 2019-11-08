@@ -446,6 +446,11 @@ def main():
         logger.error('Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.')
         quit()
 
+    if args.feature is not None and ann_db.count_features_of_type(feature) == 0:
+        feature_types = [f for f in ann_db.featuretypes()]
+        logger.error('No feature of this type detected. Features present in current database are the following: %s' % ', '.join(feature_types))
+        quit()
+
     # execute main steps
     cut_sites = get_cut_sites(region, min_flanking_length, max_flanking_length, args.pam)
     cut_sites = simulate_end_joining(cut_sites, length_weight)
