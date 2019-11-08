@@ -448,7 +448,7 @@ def main():
 
     if args.feature is not None and ann_db.count_features_of_type(feature) == 0:
         feature_types = [f for f in ann_db.featuretypes()]
-        logger.error('No feature of this type detected. Features present in current database are the following: %s' % ', '.join(feature_types))
+        logger.error('No feature of this type detected. Features present in current database are the following: {}.'.format(', '.join(feature_types)))
         quit()
 
     # execute main steps
