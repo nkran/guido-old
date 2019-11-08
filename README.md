@@ -12,11 +12,11 @@ conda env create -f environment.yml
 ### Environment with Guido
 After creating the environment you can activate it by using:
 ```
-source activate guido
+conda activate guido
 ```
 To get out of the environment use:
 ```
-source deactivate
+conda deactivate
 ```
 
 
@@ -33,6 +33,7 @@ Download ZIP from: https://imperialcollegelondon.box.com/v/guido-agam-data and e
 ```
 usage: guido.py [-h] [--sequence-file SEQUENCE] [--region REGION]
                 [--gene GENE] [--variants VARIANTS]
+                [--feature-type FEATURE_TYPE] [--pam PAM]
                 [--max-flanking MAX_FLANKING_LENGTH]
                 [--min-flanking MIN_FLANKING_LENGTH]
                 [--length-weight LENGTH_WEIGHT] [--n-patterns N_PATTERNS]
@@ -47,6 +48,9 @@ optional arguments:
   --gene GENE, -G GENE  Genome of interest (AgamP4.7 geneset).
   --variants VARIANTS, -v VARIANTS
                         VCF file with variants.
+  --feature-type FEATURE_TYPE, -f FEATURE_TYPE
+                        Genomic feature to target.
+  --pam PAM, -P PAM  Protospacer Adjacent Motif (IUPAC code format).
   --max-flanking MAX_FLANKING_LENGTH, -M MAX_FLANKING_LENGTH
                         Max length of flanking region.
   --min-flanking MIN_FLANKING_LENGTH, -m MIN_FLANKING_LENGTH
