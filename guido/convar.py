@@ -20,30 +20,33 @@ def fetch_convar_score(cut_site, conservation, var_callset):
 
     # Calculate conservation score
     chrom, start, end = cut_site['guide_loc']
-    cut_site['cons_score'] = np.mean(conservation['joined/{}/score/'.format(chrom)][3,start:end])
+    
+    if conservation:
+        cut_site['cons_score'] = np.mean(conservation['joined/{}/score/'.format(chrom)][3,start:end])
 
-    variants = var_callset[chrom]['variants']
-    calldata = var_callset[chrom]['calldata']
-    pos = allel.SortedIndex(variants['POS'])
+    if var_callset:
+        variants = var_callset[chrom]['variants']
+        calldata = var_callset[chrom]['calldata']
+        pos = allel.SortedIndex(variants['POS'])
 
-    cut_site['variants'] = {}
-    cut_site['variants_n'] = 0
+        cut_site['variants'] = {}
+        cut_site['variants_n'] = 0
 
-    try:
-        loc = pos.locate_range(start, end)
-        g = allel.GenotypeArray(calldata['GT'][loc])
-        
-        cut_site['variants'] = {
-            'pos': variants['POS'][loc], 
-            'alt': variants['ALT'][loc], 
-            'ref': variants['REF'][loc],
-            'allel_count': np.array(g.count_alleles())
-            }
-        cut_site['variants_zipped'] = list(zip(*cut_site['variants'].values()))
-        cut_site['variants_n'] = len(variants['POS'][loc])
-        
-    except:
-        pass
+        try:
+            loc = pos.locate_range(start, end)
+            g = allel.GenotypeArray(calldata['GT'][loc])
+            
+            cut_site['variants'] = {
+                'pos': variants['POS'][loc], 
+                'alt': variants['ALT'][loc], 
+                'ref': variants['REF'][loc],
+                'allel_count': np.array(g.count_alleles())
+                }
+            cut_site['variants_zipped'] = list(zip(*cut_site['variants'].values()))
+            cut_site['variants_n'] = len(variants['POS'][loc])
+            
+        except:
+            pass
 
     return cut_site
 
@@ -118,7 +121,7 @@ def apply_conservation_variation_score(cut_sites, conservation_store, variation_
     '''
 
     # handle variation file type
-    if os.path.exists(variation_store):
+    if variation_store is not False and os.path.exists(variation_store):
         var_path, var_ext = os.path.splitext(variation_store)
 
         if var_ext == '.vcf':
@@ -132,13 +135,18 @@ def apply_conservation_variation_score(cut_sites, conservation_store, variation_
             logger.error('Variation file could not be opened. Please check the supported file formats.')
             quit()
     else:
-        logger.error('Variation file could not be opened. Please check the supported file formats.')
-        quit()
+        var_callset = None
+        logger.info('Variation file was not provided.')
 
     # open conservation store
-    conservation = zarr.open(conservation_store, 'r')
+    if conservation_store is not False and os.path.exists(conservation_store):
+        conservation = zarr.open(conservation_store, 'r')
+    else:
+        conservation = None
+        logger.info('Conservation resource was not provided.')
 
-    iterable_cut_sites = [(cut_site, conservation, var_callset) for cut_site in cut_sites]
-    cut_sites = list(tqdm(pool.istarmap(fetch_convar_score, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
+    if any([var_callset, conservation]):
+        iterable_cut_sites = [(cut_site, conservation, var_callset) for cut_site in cut_sites]
+        cut_sites = list(tqdm(pool.istarmap(fetch_convar_score, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
 
     return cut_sites

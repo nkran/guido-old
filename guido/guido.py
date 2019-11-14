@@ -326,7 +326,10 @@ def main():
         if not os.path.exists(args.output_folder):
             os.makedirs(args.output_folder)
 
-        render_output(cut_sites, targets_df, args.output_folder)
+        if not args.disable_offtargets:
+            render_output(cut_sites, args.output_folder, targets_df=targets_df)
+        else:
+            render_output(cut_sites, args.output_folder)
 
         if args.dump:
             with open(os.path.join(args.output_folder, 'guides_all.pickle'), 'wb') as f:
