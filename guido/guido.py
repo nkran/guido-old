@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import argparse
+import pickle
 
 import gffutils
 import multiprocessing as mp
@@ -131,6 +132,7 @@ def parse_args():
     parser.add_argument('--disable-off-targets', dest='disable_offtargets', type=bool, nargs='?', const=True, help="Disable off-targets search.", default=False)
     parser.add_argument('--output-folder', '-o', dest='output_folder', help="Output folder.")
     parser.add_argument('--feature-type', '-f', dest='feature', help='Type of genomic feature to focus guide search on.', default=None)
+    parser.add_argument('--dump', dest='dump', help="Dump pickled cut_sites object to the output folder.", default=False)
 
     return parser.parse_args()
 
@@ -313,14 +315,6 @@ def main():
 
         render_output(cut_sites, targets_df, args.output_folder)
 
-        # if args.sequence:
-            # simple output
-            # save_guides_list_simple(cut_sites, args.output_folder, args.n_patterns)
-            # save_detailed_list_simple(cut_sites, args.output_folder, args.n_patterns)
-        # else:
-        #     save_guides_list(cut_sites, args.output_folder, args.n_patterns)
-        #     # save_detailed_list(cut_sites, args.output_folder, args.n_patterns)
-        #     # save_to_bed(cut_sites, args.output_folder, args.n_patterns)
-
-        # else:
-        #     quit()
+        if args.dump:
+            with open(os.path.join(args.output_folder, 'guides_all.pickle'), 'wb') as f:
+                pickle.dump(cut_sites, f, protocol=pickle.HIGHEST_PROTOCOL)
