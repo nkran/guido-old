@@ -1,7 +1,6 @@
 import os
 import csv
 import itertools
-import pickle
 import pandas as pd
 
 from math import trunc
@@ -16,6 +15,7 @@ ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 file_loader = FileSystemLoader(os.path.join(ROOT_PATH, 'templates'))
 env = Environment(loader=file_loader)
 env.filters['rev_comp'] = rev_comp
+
 
 def render_output(cut_sites, targets_df, output_folder):
 
@@ -37,9 +37,6 @@ def render_output(cut_sites, targets_df, output_folder):
     template = env.get_template('guide_details.j2')
     output_details = template.render(cut_sites=cut_sites, targets_grp=targets_grp, rev_comp=rev_comp)
 
-    # print(output_details)
     with open(os.path.join(output_folder, 'guides_list_detailed.txt'), 'w') as f:
         f.write(output_details)
 
-    with open(os.path.join(output_folder, 'guides_all.pickle'), 'wb') as f:
-        pickle.dump(cut_sites, f, protocol=pickle.HIGHEST_PROTOCOL)
