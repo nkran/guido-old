@@ -11,7 +11,7 @@ Top MMEJ patterns
 {{ pattern.left }}{{ pattern.right }}	{{ pattern.pattern }}	{{ pattern.deletion_seq }}	{{ '%0.2f' % pattern.pattern_score }}	{{pattern.frame_shift}}
 {% endfor %}
 {% else -%}
-    MMEJ patterns were not generated because the sequence is not complete (contains 'N').
+    MMEJ patterns were not generated (sequence contains 'N' or the option was disabled).
 {% endif %}
 
 {% if cut_site.variants_n > 0 -%}
@@ -36,6 +36,7 @@ Top MMEJ patterns
 
 Conservation score: {{ cut_site.cons_score }}
 
+{% if targets_grp %}}
 {% if cix in targets_grp.keys() %}
 Off-targets {{ cut_site.offtargets_str }}
 {% for target in targets_grp[cix] -%}
@@ -44,6 +45,7 @@ Off-targets {{ cut_site.offtargets_str }}
 {% endfor %}
 {% else %}
 No off-targets found
+{% endif %}
 {% endif %}
 ---
 {% endfor %}
