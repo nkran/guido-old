@@ -57,16 +57,29 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
             absolute_cut_pos = r_end - pam_loc + 3
             guide_location = (r_chrom, absolute_cut_pos - 3 - pam_len, absolute_cut_pos + 17)
 
-        cut_dict['pam'] = sequence[pam_loc:pam_loc+pam_len]
-        cut_dict['absolute_cut_pos'] = absolute_cut_pos
-        cut_dict['relative_cut_pos'] = relative_cut_pos
-        cut_dict['relative_cut_pos_seq'] = relative_cut_pos - left_slice
-        cut_dict['seq'] = sequence[seq_slice]
-        cut_dict['guide'] = sequence[pam_loc-20:pam_loc+pam_len]
-        cut_dict['guide_loc'] = guide_location
-        cut_dict['region'] = region
-        cut_dict['strand'] = r_strand
-        
+        # define dict structure -------------------------------
+        cut_dict = {
+            'pam':                  sequence[pam_loc:pam_loc+pam_len],
+            'absolute_cut_pos':     absolute_cut_pos,
+            'relative_cut_pos':     relative_cut_pos,
+            'relative_cut_pos_seq': relative_cut_pos - left_slice,
+            'seq':                  sequence[seq_slice],
+            'guide':                sequence[pam_loc-20:pam_loc+pam_len],
+            'guide_loc':            guide_location,
+            'region':               region,
+            'strand':               r_strand,
+            'mmej_patterns':        [],
+            'complete_score':       0,
+            'sum_score':            0,
+            'cons_score':           0,
+            'variants':             {},
+            'variants_zipped':      {},
+            'variants_n':           0,
+            'mm':                   {},
+            'offtargets_str':       '',
+            'offtargets_n':         0,
+        } 
+
         if 'N' not in cut_dict['guide']:
             cuts.append(cut_dict)
 
