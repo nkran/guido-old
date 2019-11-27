@@ -5,18 +5,17 @@ import argparse
 import pickle
 
 import gffutils
+import allel
 import multiprocessing as mp
 from tqdm import tqdm
 from Bio import SeqIO
-
-import pandas as pd
 
 import guido.log as log
 from guido.mmej import simulate_end_joining
 from guido.output import render_output
 from guido.off_targets import run_bowtie
 from guido.convar import apply_conservation_variation_score
-from guido.helpers import istarmap, rev_comp
+from guido.helpers import istarmap, rev_comp, geneset_to_pandas
 
 logger = log.createCustomLogger('root')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
@@ -68,6 +67,7 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
             'guide_loc':            guide_location,
             'region':               region,
             'strand':               r_strand,
+            'annotation':           [],
             'mmej_patterns':        [],
             'complete_score':       0,
             'sum_score':            0,
@@ -163,37 +163,33 @@ def define_genomic_region(chromosome, start, end):
     return region
 
 
-def annotate_guides(cut_sites, ann_db, feature):
+def annotate_guides(cut_site, ann_db, feature):
     '''
-    Use GFF annotation to annotate guides
+    Use GFF annotation to annotate guides with exon name
     (Optional - feature) Only keep guides that are located on a given type of genomic feature
     '''
-    logger.info("Annotating ...")
 
-    for cut_site in cut_sites[:]:
-        location = cut_site['guide_loc']
+    location = cut_site['guide_loc']
+    pdFeatures = ann_db.query(f'seqid == {repr(location[0])} & start <= {location[2]} & end >= {location[1]}')
 
-        if feature == 'intergenic' or feature == 'intron':
-            feature_types = [f[2] for f in ann_db.region(region=location)]
+    if feature is not None:
+        feature_types = [feature for feature in pdFeatures.get('type')]
 
-            if feature == 'intergenic' and 'gene' in feature_types:
-                cut_sites.remove(cut_site)
+        if feature == 'intergenic' and 'gene' in feature_types:
+            return None
 
-            elif feature == 'intron' and 'gene' not in feature_types or feature == 'intron' and 'exon' in feature_types:
-                cut_sites.remove(cut_site)
-
-            else:
-                features = [f for f in ann_db.region(region=location)]
-                cut_site.update({'annotation': features})
+        elif feature == 'intron' and 'gene' not in feature_types or feature == 'intron' and 'exon' in feature_types:
+            return None
 
         else:
-            features = [f for f in ann_db.region(region=location, featuretype=feature)]
-            if not features:
-                cut_sites.remove(cut_site)
-            cut_site.update({'annotation': features})
+            exon_name = ', '.join([exon for exon in set(pdFeatures.get('Name')) if bool(exon)])
+            cut_site['annotation'] = exon_name
+            return cut_site
 
-    return cut_sites
-
+    else:
+        exon_name = ', '.join([exon for exon in set(pdFeatures.get('Name')) if bool(exon)])
+        cut_site['annotation'] = exon_name
+        return cut_site
 
 # ------------------------------------------------------------
 # Main
@@ -202,10 +198,11 @@ def main():
     ascii_header = r'''
                                                                 
                     ||||||            ||        ||              
-                  ||        ||    ||        ||||||    ||||      
+                  ||    ||                      ||              
+                  ||        ||    ||  ||    ||||||    ||||      
                   ||  ||||  ||    ||  ||  ||    ||  ||    ||    
                   ||    ||  ||    ||  ||  ||    ||  ||    ||    
-                    ||||||    ||||||  ||    ||||||    ||||      
+                    ||||||    ||||||  ||    ||||||    ||||       
                                                                 
                     '''
 
@@ -217,14 +214,14 @@ def main():
     max_flanking_length = args.max_flanking_length
     min_flanking_length = args.min_flanking_length
     length_weight = args.length_weight
-    feature = args.feature
 
     # ------------------------------------------------------------
     # Handle input arguments
     # ------------------------------------------------------------
 
     if args.region or args.gene:
-        ann_db = gffutils.FeatureDB(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.7'), keep_order=True)
+        ann_db = allel.FeatureTable.from_gff3('guido/data/references/AgamP4.7.gff3.gz', attributes=['ID', 'Name'], attributes_fill='')
+        ann_db = geneset_to_pandas(ann_db)
     else:
         ann_db = False
 
@@ -252,14 +249,14 @@ def main():
         logger.info('Using AgamP4 reference genome. Gene: {}'.format(args.gene))
 
         try:
-            gene = ann_db[args.gene]
+            gene = ann_db.query(f'ID == {repr(args.gene)}')
         except:
             logger.error('Gene not found: {}'.format(args.gene))
             quit()
 
-        chromosome = gene.seqid
-        start = gene.start
-        end = gene.end
+        chromosome = ''.join(gene.seqid)
+        start = int(gene.get('start'))
+        end = int(gene.get('end'))
 
         region = define_genomic_region(chromosome, start, end)
 
@@ -284,13 +281,11 @@ def main():
         logger.error('Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.')
         quit()
 
-    if args.feature is not None and ann_db.count_features_of_type(feature) == 0:
-        feature_types = [f for f in ann_db.featuretypes()]
-        logger.error('No feature of this type detected. Features present in current database are the following: {}.'.format(', '.join(feature_types)))
-        quit()
-
-    if ann_db:
-        cut_sites = annotate_guides(cut_sites, ann_db, feature)
+    if args.feature is not None and args.feature != 'intergenic' and args.feature != 'intron':
+        feature_types = set([ft for ft in ann_db.get('type')])
+        if args.feature not in feature_types:
+            logger.error('No feature of this type detected. Features present in current database are the following: intergenic, intron, {}.'.format(', '.join(feature_types)))
+            quit()
 
     if not args.output_folder:
         logger.error('No output folder selected. Please define it by using -o option.')
@@ -306,11 +301,20 @@ def main():
 
         logger.info('Analysing sequence ({} bp) ...'.format(region[2] - region[1]))
         cut_sites = find_breaks(region, min_flanking_length, max_flanking_length, args.pam)
+        
+        if ann_db is not False:
+            logger.info('Annotating ...')
+            iterable_cut_sites = [(cut_site, ann_db, args.feature) for cut_site in cut_sites]
+            cut_sites = list(pool.starmap(annotate_guides, iterable_cut_sites))
 
         if not args.disable_mmej:
             logger.info('Simulating MMEJ ...')
-            iterable_cut_sites = [(cut_site, args.n_patterns) for cut_site in cut_sites]
-            cut_sites = list(tqdm(pool.istarmap(simulate_end_joining, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
+            iterable_cut_sites = [(cut_site, args.n_patterns) for cut_site in cut_sites if cut_site is not None]
+            if len(iterable_cut_sites) == 0:
+                logger.error('There are no guides that suit your requirements. Try broadening your search parameters.')
+                quit()
+            else:
+                cut_sites = list(pool.starmap(simulate_end_joining, iterable_cut_sites))
 
         if args.conservation_store or args.variation_store:
             logger.info('Analysing conservation and variation in guides ...')
