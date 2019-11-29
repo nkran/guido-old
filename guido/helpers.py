@@ -53,13 +53,13 @@ def parse_MD_tag(sequence, md_tag):
     seq_len = len(sequence)
     seq = ['.'] * seq_len
     ix = 0
-    
+
     for link in tag_chain:
         dist, base = link
         ix += int(dist)
         if base:
             seq[ix] = base
-    
+
     return ''.join(seq)
 
 def geneset_to_pandas(geneset):

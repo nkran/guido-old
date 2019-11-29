@@ -31,8 +31,8 @@ def generate_mmej_patterns(rel_cut_position, sequence, length_weight):
         # iterate through sequence
         for i in range(len(left_seq) - k + 1):
             kmer = left_seq[i:i+k]
-            
-            # check if the k-mer is in both sequences and 
+
+            # check if the k-mer is in both sequences and
             # hasn't been found before
             if kmer in right_seq and kmer not in kmers:
 
@@ -42,7 +42,7 @@ def generate_mmej_patterns(rel_cut_position, sequence, length_weight):
                 # find positions of patterns in each sequence
                 left_positions = [(m.start(), m.end()) for m in p.finditer(left_seq)]
                 right_positions = [(m.start(), m.end()) for m in p.finditer(right_seq)]
-                
+
                 # get combinations
                 pos_combinations = [c[0] + c[1] for c in list(itertools.product(left_positions, right_positions))]
                 all_combinations.extend(pos_combinations)
@@ -116,7 +116,7 @@ def simulate_end_joining(cut_site, n_patterns):
     '''
     Simulates end joining with microhomologies
     '''
-    
+
     length_weight = 20
 
     if 'N' not in cut_site['seq']:
@@ -134,5 +134,5 @@ def simulate_end_joining(cut_site, n_patterns):
         cut_site['mmej_patterns'] = []
         cut_site['complete_score'] = 0
         cut_site['sum_score'] = 0
-    
+
     return cut_site

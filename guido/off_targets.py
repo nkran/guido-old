@@ -52,7 +52,7 @@ def run_bowtie(cut_sites, max_offtargets, threads):
             mismatches_count[m] = 0
 
     mismatches_count['id'] = mismatches_count['id'].astype(int)
-    
+
     # print(mismatches_count)
     # add mismatch info to the guide dict
     for ix, x in mismatches_count.iterrows():

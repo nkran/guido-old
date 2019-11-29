@@ -20,7 +20,7 @@ def fetch_convar_score(cut_site, conservation, var_callset):
 
     # Calculate conservation score
     chrom, start, end = cut_site['guide_loc']
-    
+
     if conservation:
         cut_site['cons_score'] = np.mean(conservation['joined/{}/score/'.format(chrom)][3,start:end])
 
@@ -35,16 +35,16 @@ def fetch_convar_score(cut_site, conservation, var_callset):
         try:
             loc = pos.locate_range(start, end)
             g = allel.GenotypeArray(calldata['GT'][loc])
-            
+
             cut_site['variants'] = {
-                'pos': variants['POS'][loc], 
-                'alt': variants['ALT'][loc], 
+                'pos': variants['POS'][loc],
+                'alt': variants['ALT'][loc],
                 'ref': variants['REF'][loc],
                 'allel_count': np.array(g.count_alleles())
                 }
             cut_site['variants_zipped'] = list(zip(*cut_site['variants'].values()))
             cut_site['variants_n'] = len(variants['POS'][loc])
-            
+
         except:
             pass
 
@@ -73,9 +73,9 @@ def apply_conservation_variation_score(cut_sites, conservation_store, variation_
     joined
         - 2L
             - averages (21, 2L len)
-                - AaegL5 
-                - AalbS2 
-                - AaraD1 
+                - AaegL5
+                - AalbS2
+                - AaraD1
                 ...
             - weighted_averages (21, 2L len)
                 - ... each genome
@@ -85,7 +85,7 @@ def apply_conservation_variation_score(cut_sites, conservation_store, variation_
                 - varscore - conservation score combined with SNP density
                 - varscore scaled to 0-1 scale
                 - varscore non-coding (TODO)
-            
+
             - rolling (8, 2L len) - calculate on the go?
                 - SNP density
                 - short window average - rolling (20 bp)
@@ -101,7 +101,7 @@ def apply_conservation_variation_score(cut_sites, conservation_store, variation_
             mean_short_sliding = np.array(pd.DataFrame(np.mean(identity_short, axis=0)).rolling(20, win_type ='hamming', center=True).mean())
             mean_long_sliding = np.array(pd.DataFrame(np.mean(identity_long, axis=0)).rolling(20, win_type ='hamming', center=True).mean())
 
-            mean_short_sliding_big = np.array(pd.DataFrame(np.mean(identity_short, axis=0)).rolling(5000, win_type ='hamming', center=True).mean())        
+            mean_short_sliding_big = np.array(pd.DataFrame(np.mean(identity_short, axis=0)).rolling(5000, win_type ='hamming', center=True).mean())
             mean_long_sliding_big = np.array(pd.DataFrame(np.mean(identity_long, axis=0)).rolling(5000, win_type ='hamming', center=True).mean())
     '''
 
