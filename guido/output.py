@@ -32,7 +32,7 @@ def render_output(cut_sites, output_folder, targets_df=None):
         targets_df['diff'] = targets_df.apply(lambda x: parse_MD_tag(x[9], x[12]), axis=1)
         targets_df['id'] = targets_df['id'].astype(int)
         targets = [d for ix, d in targets_df[['id', 'diff', 2, 3, 7, 9, 12, 'chrom', 'start', 'seq', 'mm']].to_dict(orient='index').items()]
-        
+
         targets_sorted = sorted(targets, key=lambda x: x['id'])
         targets_grp = {k: list(g) for k, g in itertools.groupby(targets_sorted, lambda x: x['id'])}
     else:

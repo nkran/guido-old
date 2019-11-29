@@ -30,7 +30,7 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
     cuts = []
 
     for pam_loc in pams:
-        
+
         cut_dict = {}
         r_chrom, r_start, r_end, r_strand = region
         r_length = r_end - r_start
@@ -78,7 +78,7 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
             'mm':                   {},
             'offtargets_str':       '',
             'offtargets_n':         0,
-        } 
+        }
 
         if 'N' not in cut_dict['guide']:
             cuts.append(cut_dict)
@@ -92,10 +92,10 @@ def find_breaks(region, min_flanking_length, max_flanking_length, pam):
     Assumes SpCas9 / 'NGG'-motif by default
     Keeps only those which are more than 30 bp downstream
     '''
-    
+
     chromosome, start, end, chr_seq = region
     seq = str(chr_seq[start:end].upper())
-    
+
     iupac_dict = {'A':'A',
                   'C':'C',
                   'G':'G',
@@ -112,7 +112,7 @@ def find_breaks(region, min_flanking_length, max_flanking_length, pam):
                   'V':'[ACG]',
                   'N':'[ACGT]'}
     iupac_pam = ''.join([iupac_dict[letter] for letter in pam])
-    
+
     rev_seq = rev_comp(seq)
     pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(seq)]
     rev_pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, rev_seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(rev_seq)]
@@ -122,13 +122,13 @@ def find_breaks(region, min_flanking_length, max_flanking_length, pam):
     cuts_neg = fill_dict(rev_seq, rev_pams, pam_len, max_flanking_length, (chromosome, start, end, '-'))
     cut_sites = cuts_pos + cuts_neg
     cut_sites = sorted(cut_sites, key=lambda x: x['guide_loc'])
-     
+
     return cut_sites
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Microhomology predictor.')
-    
+
     parser.add_argument('--sequence-file', '-i', dest='sequence', help='File with the target sequence (TXT or FASTA).')
     parser.add_argument('--region', '-r', dest='region', help='Region in AgamP4 genome [2L:1530-1590].')
     parser.add_argument('--gene', '-G', dest='gene', help='Genome of interest (AgamP4.7 geneset).')
@@ -196,14 +196,14 @@ def annotate_guides(cut_site, ann_db, feature):
 # ------------------------------------------------------------
 def main():
     ascii_header = r'''
-                                                                
-                    ||||||            ||        ||              
-                  ||    ||                      ||              
-                  ||        ||    ||  ||    ||||||    ||||      
-                  ||  ||||  ||    ||  ||  ||    ||  ||    ||    
-                  ||    ||  ||    ||  ||  ||    ||  ||    ||    
-                    ||||||    ||||||  ||    ||||||    ||||       
-                                                                
+
+                    ||||||            ||        ||
+                  ||    ||                      ||
+                  ||        ||    ||  ||    ||||||    ||||
+                  ||  ||||  ||    ||  ||  ||    ||  ||    ||
+                  ||    ||  ||    ||  ||  ||    ||  ||    ||
+                    ||||||    ||||||  ||    ||||||    ||||
+
                     '''
 
     print(ascii_header)
@@ -291,7 +291,7 @@ def main():
         logger.error('No output folder selected. Please define it by using -o option.')
         quit()
     else:
-    
+
         # ------------------------------------------------------------
         # Execute
         # ------------------------------------------------------------
@@ -301,7 +301,7 @@ def main():
 
         logger.info('Analysing sequence ({} bp) ...'.format(region[2] - region[1]))
         cut_sites = find_breaks(region, min_flanking_length, max_flanking_length, args.pam)
-        
+
         if ann_db is not False:
             logger.info('Annotating ...')
             iterable_cut_sites = [(cut_site, ann_db, args.feature) for cut_site in cut_sites]
