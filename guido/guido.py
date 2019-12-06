@@ -7,7 +7,7 @@ import pickle
 import gffutils
 import allel
 import multiprocessing as mp
-from tqdm import tqdm
+from collections import defaultdict, namedtuple
 from Bio import SeqIO
 
 import guido.log as log

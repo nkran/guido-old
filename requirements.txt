@@ -10,4 +10,3 @@ pandas==0.23.0
 PyVCF==0.6.8
 zarr==2.2.0
 requests==2.21.0
-tqdm==4.35

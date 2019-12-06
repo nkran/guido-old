@@ -3,7 +3,6 @@ import subprocess
 import tempfile
 import pandas as pd
 from io import StringIO
-from tqdm import tqdm
 
 import guido.log as log
 from guido.helpers import chunks, rev_comp
