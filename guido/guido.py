@@ -3,19 +3,20 @@ import re
 import sys
 import argparse
 import pickle
+import itertools
 
 import gffutils
 import allel
 import multiprocessing as mp
 from collections import defaultdict, namedtuple
-from Bio import SeqIO
+from pyfaidx import Fasta
 
 import guido.log as log
 from guido.mmej import simulate_end_joining
 from guido.output import render_output
 from guido.off_targets import run_bowtie
 from guido.convar import apply_conservation_variation_score
-from guido.helpers import istarmap, rev_comp, geneset_to_pandas
+from guido.helpers import rev_comp, geneset_to_pandas, Region
 
 logger = log.createCustomLogger('root')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
@@ -86,16 +87,14 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
     return cuts
 
 
-def find_breaks(region, min_flanking_length, max_flanking_length, pam):
+def find_breaks(region, min_flanking_length, max_flanking_length, pam, selected_feature=None):
     '''
     Finds Cas9-specific PAM motifs on both strands of a given sequence
     Assumes SpCas9 / 'NGG'-motif by default
     Keeps only those which are more than 30 bp downstream
     '''
 
-    chromosome, start, end, chr_seq = region
-    seq = str(chr_seq[start:end].upper())
-
+    chromosome, start, end, seq = region
     iupac_dict = {'A':'A',
                   'C':'C',
                   'G':'G',
@@ -151,16 +150,10 @@ def parse_args():
 
 
 def define_genomic_region(chromosome, start, end):
-    records = SeqIO.parse(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.fa'), "fasta")
-    reference = {}
+    genome = Fasta(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.fa'))
+    region_seq = genome[chromosome][start:end].seq.upper()
 
-    for record in records:
-        reference[record.id] = record
-
-    chr_seq = str(reference[chromosome].seq.upper())
-    region = (chromosome, start, end, chr_seq)
-
-    return region
+    return Region(chromosome=chromosome, start=start, end=end, sequence=region_seq)
 
 
 def annotate_guides(cut_site, ann_db, feature):
@@ -220,13 +213,22 @@ def main():
     # ------------------------------------------------------------
 
     if args.region or args.gene:
-        ann_db = allel.FeatureTable.from_gff3('guido/data/references/AgamP4.7.gff3.gz', attributes=['ID', 'Name'], attributes_fill='')
-        ann_db = geneset_to_pandas(ann_db)
+        ann_db = allel.gff3_to_dataframe('guido/data/references/AgamP4.7.gff3.gz', attributes=['ID', 'Name', 'Parent', 'rank', 'constitutive'], attributes_fill='')
     else:
-        ann_db = False
+        ann_db = None
 
     if args.region and args.gene:
         logger.info('Please use only one option for genomic region selection. Use -r or -G.')
+        quit()
+
+    if args.feature and len(ann_db) > 0:
+        feature_types = ann_db['type'].unique()
+        if args.feature not in feature_types:
+            logger.error('No feature of this type detected. Features present in current database are the following: {}.'.format(', '.join(feature_types)))
+            quit()
+
+    if not args.region and not args.sequence and not args.gene:
+        logger.error('Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.')
         quit()
 
     if args.region:
@@ -240,8 +242,6 @@ def main():
         start = int(args.region.split(':')[1].split('-')[0])
         end = int(args.region.split(':')[1].split('-')[1])
 
-        region = define_genomic_region(chromosome, start, end)
-
     elif args.gene:
         '''
         Option -G: get genomic region from a gene name
@@ -254,38 +254,22 @@ def main():
             logger.error('Gene not found: {}'.format(args.gene))
             quit()
 
-        chromosome = ''.join(gene.seqid)
-        start = int(gene.get('start'))
-        end = int(gene.get('end'))
+        chromosome = gene.seqid.values[0]
+        start = int(gene.start)
+        end = int(gene.end)
 
-        region = define_genomic_region(chromosome, start, end)
-
-    elif args.sequence:
-        '''
-        Option -i: read sequence from FASTA or txt file
-        '''
-        try:
-            record = SeqIO.parse(args.sequence, "fasta").next()
-            logger.info('Reading FASTA: {}'.format(args.sequence))
-            seq = str(record.seq.upper())
-        except:
-            logger.info('Reading text sequence', args.sequence)
-            with open(args.sequence, 'r') as f:
-                seq = f.readline().strip().upper()
-
-        region = ("sequence", 1, len(seq), seq)
-    else:
-        region = ('seq', 0, 0, False)
-
-    if not args.region and not args.sequence and not args.gene:
-        logger.error('Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.')
-        quit()
-
-    if args.feature is not None and args.feature != 'intergenic' and args.feature != 'intron':
-        feature_types = set([ft for ft in ann_db.get('type')])
-        if args.feature not in feature_types:
-            logger.error('No feature of this type detected. Features present in current database are the following: intergenic, intron, {}.'.format(', '.join(feature_types)))
+    if args.feature:
+        overlapping_features = ann_db.query(f'(type == {repr(args.feature)}) & \
+                                                (seqid == {repr(chromosome)}) &  \
+                                                (((start >= {start}) & (start <= {end})) | \
+                                                ((end >= {start}) & (end <= {end})))')
+        if len(overlapping_features) > 0:
+            regions = [define_genomic_region(chromosome, start, end) for chromosome, start, end in overlapping_features[['seqid', 'start', 'end']].values]
+        else:
+            logger.error('No feature of this type detected in the provided region.')
             quit()
+    else:
+        regions = [define_genomic_region(chromosome, start, end)]
 
     if not args.output_folder:
         logger.error('No output folder selected. Please define it by using -o option.')
@@ -299,18 +283,15 @@ def main():
         logger.info('Guido is dancing with {} threads ...'.format(args.n_threads))
         pool = mp.Pool(args.n_threads)
 
-        logger.info('Analysing sequence ({} bp) ...'.format(region[2] - region[1]))
-        cut_sites = find_breaks(region, min_flanking_length, max_flanking_length, args.pam)
+        logger.info('Analysing sequence ...')
 
-        if ann_db is not False:
-            logger.info('Annotating ...')
-            iterable_cut_sites = [(cut_site, ann_db, args.feature) for cut_site in cut_sites]
-            cut_sites = list(pool.starmap(annotate_guides, iterable_cut_sites))
+        cut_sites = (find_breaks(region, min_flanking_length, max_flanking_length, args.pam) for region in regions)
+        cut_sites = itertools.chain(*cut_sites)
 
         if not args.disable_mmej:
             logger.info('Simulating MMEJ ...')
-            iterable_cut_sites = [(cut_site, args.n_patterns) for cut_site in cut_sites if cut_site is not None]
-            if len(iterable_cut_sites) == 0:
+            iterable_cut_sites = ((cut_site, args.n_patterns) for cut_site in cut_sites if cut_site is not None)
+            if not iterable_cut_sites:
                 logger.error('There are no guides that suit your requirements. Try broadening your search parameters.')
                 quit()
             else:
