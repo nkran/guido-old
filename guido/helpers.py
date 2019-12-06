@@ -53,3 +53,5 @@ def geneset_to_pandas(geneset):
         items.append((n, v))
 
     return pandas.DataFrame.from_dict(dict(items))
+
+Region = namedtuple('Region', ['chromosome', 'start', 'end', 'sequence'])
