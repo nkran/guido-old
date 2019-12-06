@@ -5,7 +5,6 @@ import zarr
 import allel
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 import guido.log as log
 
@@ -146,7 +145,7 @@ def apply_conservation_variation_score(cut_sites, conservation_store, variation_
         logger.info('Conservation resource was not provided.')
 
     if any([var_callset, conservation]):
-        iterable_cut_sites = [(cut_site, conservation, var_callset) for cut_site in cut_sites]
-        cut_sites = list(tqdm(pool.istarmap(fetch_convar_score, iterable_cut_sites), total=len(iterable_cut_sites), ncols=100))
+        iterable_cut_sites = ((cut_site, conservation, var_callset) for cut_site in cut_sites)
+        cut_sites = pool.starmap(fetch_convar_score, iterable_cut_sites)
 
     return cut_sites
