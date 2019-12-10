@@ -20,24 +20,18 @@ def rev_comp(seq):
 
 
 def parse_MD_tag(sequence, md_tag):
-    """
-    TODO: if you have 0A -> works fine
-          BUT:
-          if you have 0A0T -> ix doesn't get updated on +1 to a position AFTER 0A
-    """
     tag = md_tag.split(':')[2]
     tag_chain = re.findall("([0-9]+)([AaCcGgTt]?)", tag)
-    seq_len = len(sequence)
-    seq = ['.'] * seq_len
-    ix = 0
-
+    
+    string = ''
+    
     for link in tag_chain:
         dist, base = link
-        ix += int(dist)
-        if base:
-            seq[ix] = base
-
-    return ''.join(seq)
+        
+        string += '.' * int(dist)
+        string += base
+    
+    return string
 
 def geneset_to_pandas(geneset):
     """
