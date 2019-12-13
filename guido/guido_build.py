@@ -3,10 +3,9 @@ import argparse
 import pickle
 import subprocess
 from pyfaidx import Faidx
+from guido.log import createCustomLogger
 
-import guido.log as log
-
-logger = log.createCustomLogger('root')
+logger = createCustomLogger('root')
 
 
 def parse_args():
@@ -22,11 +21,6 @@ def parse_args():
 
 
 def main():
-    """
-    TODO
-    - handle only specific formats (.fa, .gz / .gtf, .gff3, .gz)
-    """
-
     ascii_header = r'''
                    ________  __________  ____        ____  __  ________    ____ 
                   / ____/ / / /  _/ __ \/ __ \      / __ )/ / / /  _/ /   / __ \
@@ -52,13 +46,20 @@ def main():
     # Handle input arguments
     # ------------------------------------------------------------
 
-    if not args.genome_file or not os.path.exists(args.genome_file):
+    if not args.genome_file:
         logger.error('Please use the -g argument to direct guido-build to the genome fasta file.')
         quit()
     else:
-        genome_file_abspath = os.path.abspath(args.genome_file)
-        genome_file_dirname = os.path.dirname(genome_file_abspath)
-        genome_info['genome_file'] = genome_file_abspath
+        if os.path.exists(args.genome_file):
+            supported_seq_ext = ['.fa', '.fasta', '.fna', '.ffn', '.faa', '.frn']
+            gen_seq_ext = os.path.splitext(args.genome_file)[1]
+            if gen_seq_ext in supported_seq_ext:
+                genome_file_abspath = os.path.abspath(args.genome_file)
+                genome_file_dirname = os.path.dirname(genome_file_abspath)
+                genome_info['genome_file'] = genome_file_abspath
+            else:
+                logger.error('Genome file format must be in a supported FASTA format. Files must be unzipped in order to build bowtie indices.')
+                quit()
 
     if not args.genome_name:
         logger.error('Please use the -n argument to give your genome index files a name.')
@@ -67,16 +68,21 @@ def main():
         genome_info['genome_name'] = args.genome_name
 
     if args.annotation_file:
-        if not os.path.exists(args.annotation_file):
+        if os.path.exists(args.annotation_file):
+            supported_ann_ext = ['.gtf', '.gff', '.gff2', '.gff3']
+            ann_path, ann_ext = os.path.splitext(args.annotation_file)
+            if ann_ext in supported_ann_ext or os.path.splitext(ann_path)[1] in supported_ann_ext:
+                genome_info['annotation_file'] = os.path.abspath(args.annotation_file)
+            else:
+                logger.error('Annotation file format must be either GTF or GFF. Gzipped versions are also accepted.')
+        else:
             logger.error('Annotation file does not exist. Check path is entered correctly.')
             quit()
-        else:
-            genome_info['annotation_file'] = os.path.abspath(args.annotation_file)
 
     if args.description:
         genome_info['description'] = args.description
 
-    if args.n_threads >= 1:
+    if args.n_threads > 1:
         logger.info(f'Guido-build is dancing with {args.n_threads} threads ...')
     else:
         logger.info('Guido-build is dancing with a lonely single thread ...')
