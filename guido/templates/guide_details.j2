@@ -5,6 +5,15 @@ Guide sequence: {{ cut_site.guide }}
 Location: {{ cut_site.guide_loc[0] }}:{{ cut_site.guide_loc[1] }}-{{ cut_site.guide_loc[2] }} | Strand: {{ cut_site.strand }}
 MMEJ Score: {{ '%0.2f' % cut_site.complete_score }} MMEJ sum score: {{ '%0.2f' % cut_site.sum_score }}
 
+Annotations:
+{% if cut_site.annotation|length > 0 -%}
+{% for a in cut_site.annotation -%}
+    - {{a}}
+{% endfor -%}
+{% else -%}
+    No annotations overlapping with this guide.
+{% endif %}
+
 Top MMEJ patterns
 {% if cut_site.mmej_patterns|length > 0 %}
 {% for ix, pattern in cut_site.mmej_patterns.iterrows() -%}
@@ -25,7 +34,7 @@ Top MMEJ patterns
     {% set offset_l = v[0]|int - cut_site.guide_loc[1] - 1 -%}
     {% set offset_r = cut_site.guide|length - offset_l - 1 -%}
     {% for i in range(0, offset_l) -%} {{ '.' -}} {% endfor -%}
-        {{ v[1][0] -}} 
+        {{ v[1][0] -}}
     {% for i in range(0, offset_r) -%} {{ '.' -}} {% endfor %}
     {{- "  " }}{{ v[0]|int -}}{{- "  " }}{{- v[3][1] / v[3]|sum }}
     {{- "  " }}{{- v[3][0]|string + "[" + v[2] + "]/" + v[3][1]|string + "[" + v[1][0] + "]" }}
@@ -36,7 +45,7 @@ Top MMEJ patterns
 
 Conservation score: {{ cut_site.cons_score }}
 
-{% if targets_grp %}}
+{% if targets_grp %}
 {% if cix in targets_grp.keys() %}
 Off-targets {{ cut_site.offtargets_str }}
 {% for target in targets_grp[cix] -%}

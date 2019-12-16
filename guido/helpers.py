@@ -22,15 +22,15 @@ def rev_comp(seq):
 def parse_MD_tag(sequence, md_tag):
     tag = md_tag.split(':')[2]
     tag_chain = re.findall("([0-9]+)([AaCcGgTt]?)", tag)
-    
+
     string = ''
-    
+
     for link in tag_chain:
         dist, base = link
-        
+
         string += '.' * int(dist)
         string += base
-    
+
     return string
 
 def geneset_to_pandas(geneset):
@@ -48,4 +48,13 @@ def geneset_to_pandas(geneset):
 
     return pandas.DataFrame.from_dict(dict(items))
 
-Region = namedtuple('Region', ['chromosome', 'start', 'end', 'sequence'])
+def parse_gff_info(feature, info):
+    if feature in ['mRNA', 'CDS', 'exon']:
+        props = info.split(';')
+        info_dict = dict(s.split('=') for s in props)
+    else:
+        info_dict = {}
+
+    return feature,  info_dict
+
+Region = namedtuple('Region', ['chromosome', 'start', 'end', 'sequence', 'annotation'])

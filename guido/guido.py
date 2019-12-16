@@ -8,6 +8,7 @@ import itertools
 import gffutils
 import allel
 import multiprocessing as mp
+import pysam
 from collections import defaultdict, namedtuple
 from pyfaidx import Fasta
 
@@ -16,13 +17,13 @@ from guido.mmej import simulate_end_joining
 from guido.output import render_output
 from guido.off_targets import run_bowtie
 from guido.convar import apply_conservation_variation_score
-from guido.helpers import rev_comp, geneset_to_pandas, Region
+from guido.helpers import rev_comp, geneset_to_pandas, parse_gff_info, Region
 
 logger = log.createCustomLogger('root')
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
-def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
+def fill_dict(sequence, pams, pam_len, max_flanking_length, region, strand):
     '''
     Creates a list of dictionaries and returns a dataframe of all PAMs with information about:
     position ('break'), pam sequence ('pam'), MMEJ search window ('rel_break' / 'seq'), gRNA ('guide'), and strand ('strand')
@@ -33,8 +34,8 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
     for pam_loc in pams:
 
         cut_dict = {}
-        r_chrom, r_start, r_end, r_strand = region
-        r_length = r_end - r_start
+        chrom, start, end, seq, annotation = region
+        length = end - start
 
         # relative cut from the start of the sequence from region obj
         # always 5' -> 3'
@@ -44,18 +45,35 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
 
         if left_slice < 0:
             left_slice = 0
-        if right_slice > r_length:
-            right_slice = r_length
+        if right_slice > length:
+            right_slice = length
 
         seq_slice = slice(left_slice, right_slice)
 
-        if r_strand == '+':
-            absolute_cut_pos = r_start + pam_loc - 3
-            guide_location = (r_chrom, absolute_cut_pos - 17, absolute_cut_pos + 3 + pam_len)
+        if strand == '+':
+            absolute_cut_pos = start + pam_loc - 3
+            guide_location = (chrom, absolute_cut_pos - 17, absolute_cut_pos + 3 + pam_len)
 
-        if r_strand == '-':
-            absolute_cut_pos = r_end - pam_loc + 3
-            guide_location = (r_chrom, absolute_cut_pos - 3 - pam_len, absolute_cut_pos + 17)
+        if strand == '-':
+            absolute_cut_pos = end - pam_loc + 3
+            guide_location = (chrom, absolute_cut_pos - 3 - pam_len, absolute_cut_pos + 17)
+
+        guide_annotations = []
+        if annotation is not None:
+            for a in annotation:
+                ftype, fdict = parse_gff_info(feature=a[2], info=a[8])
+                fchromosome, fstart, fend = a[0], a[3], a[4]
+                if ftype not in ['chromosome'] and absolute_cut_pos >= int(fstart) and absolute_cut_pos <= int(fend):
+                    if 'Name' in fdict.keys():
+                        label = f"{ftype}|{fdict['Name']}"
+                    elif 'ID' in fdict.keys():
+                        label = f"{ftype}|{fdict['ID']}"
+                    else:
+                        label = ftype
+
+                    guide_annotations.append(label)
+        else:
+            anns = None
 
         # define dict structure -------------------------------
         cut_dict = {
@@ -66,9 +84,8 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
             'seq':                  sequence[seq_slice],
             'guide':                sequence[pam_loc-20:pam_loc+pam_len],
             'guide_loc':            guide_location,
-            'region':               region,
-            'strand':               r_strand,
-            'annotation':           [],
+            'strand':               strand,
+            'annotation':           set(guide_annotations),
             'mmej_patterns':        [],
             'complete_score':       0,
             'sum_score':            0,
@@ -87,14 +104,14 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region):
     return cuts
 
 
-def find_breaks(region, min_flanking_length, max_flanking_length, pam, selected_feature=None):
+def find_breaks(region, min_flanking_length, max_flanking_length, pam):
     '''
     Finds Cas9-specific PAM motifs on both strands of a given sequence
     Assumes SpCas9 / 'NGG'-motif by default
     Keeps only those which are more than 30 bp downstream
     '''
 
-    chromosome, start, end, seq = region
+    chromosome, start, end, seq, annotation = region
     iupac_dict = {'A':'A',
                   'C':'C',
                   'G':'G',
@@ -117,8 +134,8 @@ def find_breaks(region, min_flanking_length, max_flanking_length, pam, selected_
     rev_pams = [m.start() for m in re.finditer(r'(?=(%s))' % iupac_pam, rev_seq) if m.start(0) - min_flanking_length > 0 and m.end(0) + min_flanking_length < len(rev_seq)]
     pam_len = len(pam)
 
-    cuts_pos = fill_dict(seq, pams, pam_len, max_flanking_length, (chromosome, start, end, '+'))
-    cuts_neg = fill_dict(rev_seq, rev_pams, pam_len, max_flanking_length, (chromosome, start, end, '-'))
+    cuts_pos = fill_dict(seq, pams, pam_len, max_flanking_length, region, '+')
+    cuts_neg = fill_dict(rev_seq, rev_pams, pam_len, max_flanking_length, region, '-')
     cut_sites = cuts_pos + cuts_neg
     cut_sites = sorted(cut_sites, key=lambda x: x['guide_loc'])
 
@@ -149,40 +166,17 @@ def parse_args():
     return parser.parse_args()
 
 
-def define_genomic_region(chromosome, start, end):
+def define_genomic_region(chromosome, start, end, annotation_db=None):
     genome = Fasta(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.fa'))
     region_seq = genome[chromosome][start:end].seq.upper()
 
-    return Region(chromosome=chromosome, start=start, end=end, sequence=region_seq)
-
-
-def annotate_guides(cut_site, ann_db, feature):
-    '''
-    Use GFF annotation to annotate guides with exon name
-    (Optional - feature) Only keep guides that are located on a given type of genomic feature
-    '''
-
-    location = cut_site['guide_loc']
-    pdFeatures = ann_db.query(f'seqid == {repr(location[0])} & start <= {location[2]} & end >= {location[1]}')
-
-    if feature is not None:
-        feature_types = [feature for feature in pdFeatures.get('type')]
-
-        if feature == 'intergenic' and 'gene' in feature_types:
-            return None
-
-        elif feature == 'intron' and 'gene' not in feature_types or feature == 'intron' and 'exon' in feature_types:
-            return None
-
-        else:
-            exon_name = ', '.join([exon for exon in set(pdFeatures.get('Name')) if bool(exon)])
-            cut_site['annotation'] = exon_name
-            return cut_site
-
+    if annotation_db is not None:
+        annotation = [tuple(a) for a in annotation_db.fetch(chromosome, start-1, end+1, parser=pysam.asTuple())]
     else:
-        exon_name = ', '.join([exon for exon in set(pdFeatures.get('Name')) if bool(exon)])
-        cut_site['annotation'] = exon_name
-        return cut_site
+        annotation = None
+
+    return Region(chromosome=chromosome, start=start, end=end, sequence=region_seq, annotation=annotation)
+
 
 # ------------------------------------------------------------
 # Main
@@ -213,7 +207,8 @@ def main():
     # ------------------------------------------------------------
 
     if args.region or args.gene:
-        ann_db = allel.gff3_to_dataframe('guido/data/references/AgamP4.7.gff3.gz', attributes=['ID', 'Name', 'Parent', 'rank', 'constitutive'], attributes_fill='')
+        ann_db = allel.gff3_to_dataframe('guido/data/references/AgamP4.7.gff3.gz', attributes=['ID', 'Name'], attributes_fill='')
+        stb = pysam.TabixFile('/home/nkranjc/flash/repos/guido/guido/data/references/AgamP4.12.sorted.gff3.gz')
     else:
         ann_db = None
 
@@ -264,12 +259,12 @@ def main():
                                                 (((start >= {start}) & (start <= {end})) | \
                                                 ((end >= {start}) & (end <= {end})))')
         if len(overlapping_features) > 0:
-            regions = [define_genomic_region(chromosome, start, end) for chromosome, start, end in overlapping_features[['seqid', 'start', 'end']].values]
+            regions = [define_genomic_region(chromosome, start, end, stb) for chromosome, start, end in overlapping_features[['seqid', 'start', 'end']].values]
         else:
             logger.error('No feature of this type detected in the provided region.')
             quit()
     else:
-        regions = [define_genomic_region(chromosome, start, end)]
+        regions = [define_genomic_region(chromosome, start, end, stb)]
 
     if not args.output_folder:
         logger.error('No output folder selected. Please define it by using -o option.')
@@ -285,17 +280,17 @@ def main():
 
         logger.info('Analysing sequence ...')
 
-        cut_sites = (find_breaks(region, min_flanking_length, max_flanking_length, args.pam) for region in regions)
-        cut_sites = itertools.chain(*cut_sites)
+        cut_sites = [find_breaks(region, min_flanking_length, max_flanking_length, args.pam) for region in regions]
+        cut_sites = list(itertools.chain(*cut_sites))
 
         if not args.disable_mmej:
             logger.info('Simulating MMEJ ...')
-            iterable_cut_sites = ((cut_site, args.n_patterns) for cut_site in cut_sites if cut_site is not None)
+            iterable_cut_sites = [(cut_site, args.n_patterns) for cut_site in cut_sites]
             if not iterable_cut_sites:
                 logger.error('There are no guides that suit your requirements. Try broadening your search parameters.')
                 quit()
             else:
-                cut_sites = list(pool.starmap(simulate_end_joining, iterable_cut_sites))
+                cut_sites = pool.starmap(simulate_end_joining, iterable_cut_sites)
 
         if args.conservation_store or args.variation_store:
             logger.info('Analysing conservation and variation in guides ...')
