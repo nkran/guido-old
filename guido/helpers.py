@@ -1,8 +1,140 @@
 import re
-import multiprocessing.pool as mp
+import argparse
 import pandas
 
 from collections import namedtuple
+
+Region = namedtuple('Region', ['chromosome', 'start', 'end', 'sequence', 'annotation'])
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Microhomology predictor.')
+
+    parser.add_argument(
+        '--sequence-file',
+        '-i',
+        dest='sequence',
+        help='File with the target sequence (TXT or FASTA).',
+    )
+    parser.add_argument(
+        '--region',
+        '-r',
+        dest='region',
+        help='Region in AgamP4 genome [2L:1530-1590].'
+    )
+    parser.add_argument(
+        '--gene',
+        '-G',
+        dest='gene',
+        help='Genome of interest (AgamP4.7 geneset).'
+    )
+    parser.add_argument(
+        '--variants',
+        '-v',
+        dest='variation_store',
+        help='VCF file with variants.',
+        default=False,
+    )
+    parser.add_argument(
+        '--conservation',
+        '-c',
+        dest='conservation_store',
+        help='Path to Zarr store with conservation data.',
+        default=False,
+    )
+    parser.add_argument(
+        '--pam',
+        '-P',
+        dest='pam',
+        help='Protospacer adjacent motif (IUPAC format)',
+        default='NGG',
+    )
+    parser.add_argument(
+        '--threads',
+        '-t',
+        dest='n_threads',
+        type=int,
+        help='Number of threads used.',
+        default=1,
+    )
+    parser.add_argument(
+        '--max-flanking',
+        '-M',
+        type=int,
+        dest='max_flanking_length',
+        help='Max length of flanking region.',
+        default=40,
+    )
+    parser.add_argument(
+        '--min-flanking',
+        '-m',
+        type=int,
+        dest='min_flanking_length',
+        help='Min length of flanking region.',
+        default=25,
+    )
+    parser.add_argument(
+        '--length-weight',
+        '-w',
+        type=float,
+        dest='length_weight',
+        help='Length weight - used in scoring.',
+        default=20.0,
+    )
+    parser.add_argument(
+        '--max-offtargets',
+        type=int,
+        dest='max_offtargets',
+        help='Max number of reported offtargets',
+        default=100,
+    )
+    parser.add_argument(
+        '--n-patterns',
+        '-p',
+        type=int,
+        dest='n_patterns',
+        help='Number of MH patterns used in guide evaluation.',
+        default=5,
+    )
+    parser.add_argument(
+        '--disable-mmej',
+        dest='disable_mmej',
+        type=bool,
+        nargs='?',
+        const=True,
+        help="Disable MMEJ prediction.",
+        default=False,
+    )
+    parser.add_argument(
+        '--disable-off-targets',
+        dest='disable_offtargets',
+        type=bool,
+        nargs='?',
+        const=True,
+        help="Disable off-targets search.",
+        default=False,
+    )
+    parser.add_argument(
+        '--output-folder',
+        '-o',
+        dest='output_folder',
+        help="Output folder."
+    )
+    parser.add_argument(
+        '--feature-type',
+        '-f',
+        dest='feature',
+        help='Type of genomic feature to focus guide search on.',
+        default=None,
+    )
+    parser.add_argument(
+        '--dump',
+        dest='dump',
+        help="Dump pickled cut_sites object to the output folder.",
+        default=False,
+    )
+
+    return parser.parse_args()
 
 
 def chunks(l, n):
@@ -33,6 +165,7 @@ def parse_MD_tag(sequence, md_tag):
 
     return string
 
+
 def geneset_to_pandas(geneset):
     """
     Life is a bit easier when a geneset is a pandas DataFrame.
@@ -48,6 +181,7 @@ def geneset_to_pandas(geneset):
 
     return pandas.DataFrame.from_dict(dict(items))
 
+
 def parse_gff_info(feature, info):
     if feature in ['mRNA', 'CDS', 'exon']:
         props = info.split(';')
@@ -55,6 +189,4 @@ def parse_gff_info(feature, info):
     else:
         info_dict = {}
 
-    return feature,  info_dict
-
-Region = namedtuple('Region', ['chromosome', 'start', 'end', 'sequence', 'annotation'])
+    return feature, info_dict

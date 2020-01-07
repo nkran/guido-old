@@ -44,7 +44,10 @@ def generate_mmej_patterns(rel_cut_position, sequence, length_weight):
                 right_positions = [(m.start(), m.end()) for m in p.finditer(right_seq)]
 
                 # get combinations
-                pos_combinations = [c[0] + c[1] for c in list(itertools.product(left_positions, right_positions))]
+                pos_combinations = [
+                    c[0] + c[1]
+                    for c in list(itertools.product(left_positions, right_positions))
+                ]
                 all_combinations.extend(pos_combinations)
 
                 # save kmer
@@ -52,16 +55,16 @@ def generate_mmej_patterns(rel_cut_position, sequence, length_weight):
 
     # remove subpatterns
     combinations_array = np.array(all_combinations)
-    m1 = combinations_array[:,0,None]<=combinations_array[:,0]
-    m2 = combinations_array[:,1,None]>=combinations_array[:,1]
+    m1 = combinations_array[:, 0, None] <= combinations_array[:, 0]
+    m2 = combinations_array[:, 1, None] >= combinations_array[:, 1]
 
-    m3 = combinations_array[:,2,None]<=combinations_array[:,2]
-    m4 = combinations_array[:,3,None]>=combinations_array[:,3]
+    m3 = combinations_array[:, 2, None] <= combinations_array[:, 2]
+    m4 = combinations_array[:, 3, None] >= combinations_array[:, 3]
 
     m12 = m1 & m2
     m34 = m3 & m4
 
-    subpattern_rows = np.triu((m12 & m34),1).any(0)
+    subpattern_rows = np.triu((m12 & m34), 1).any(0)
 
     # all mmej patterns
     mmej_patterns = []
@@ -83,8 +86,10 @@ def generate_mmej_patterns(rel_cut_position, sequence, length_weight):
         deletion_seq = left_seq[left_start:] + right_seq[:right_start]
 
         # score pattern
-        length_factor =  round(1 / math.exp((deletion_length) / (length_weight)), 3)
-        pattern_score = 100 * length_factor * ((len(pattern_seq) - pattern_GC) + (pattern_GC * 2))
+        length_factor = round(1 / math.exp((deletion_length) / (length_weight)), 3)
+        pattern_score = (
+            100 * length_factor * ((len(pattern_seq) - pattern_GC) + (pattern_GC * 2))
+        )
 
         # frame shift
         if deletion_length % 3 == 0:
@@ -108,7 +113,6 @@ def generate_mmej_patterns(rel_cut_position, sequence, length_weight):
         # add to list
         mmej_patterns.append(pattern_dict)
 
-
     return mmej_patterns
 
 
@@ -120,11 +124,21 @@ def simulate_end_joining(cut_site, n_patterns):
     length_weight = 20
 
     if 'N' not in cut_site['seq']:
-        mmej_patterns = generate_mmej_patterns(cut_site['relative_cut_pos_seq'], cut_site['seq'], length_weight)
-        sorted_mmej_patterns = pd.DataFrame(mmej_patterns).sort_values('pattern_score', ascending=False).head(n_patterns)
+        mmej_patterns = generate_mmej_patterns(
+            cut_site['relative_cut_pos_seq'], cut_site['seq'], length_weight
+        )
+        sorted_mmej_patterns = (
+            pd.DataFrame(mmej_patterns)
+            .sort_values('pattern_score', ascending=False)
+            .head(n_patterns)
+        )
 
-        oof_score = sorted_mmej_patterns[sorted_mmej_patterns['frame_shift'] == '+'].loc[:,'pattern_score'].sum()
-        score = sorted_mmej_patterns.loc[:,'pattern_score'].sum()
+        oof_score = (
+            sorted_mmej_patterns[sorted_mmej_patterns['frame_shift'] == '+']
+            .loc[:, 'pattern_score']
+            .sum()
+        )
+        score = sorted_mmej_patterns.loc[:, 'pattern_score'].sum()
         complete_score = oof_score / score * 100
 
         cut_site['mmej_patterns'] = sorted_mmej_patterns
