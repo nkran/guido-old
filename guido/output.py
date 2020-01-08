@@ -1,9 +1,7 @@
 import os
-import csv
 import itertools
 import pandas as pd
 
-from math import trunc
 from jinja2 import Environment, FileSystemLoader
 
 from guido.helpers import parse_MD_tag, rev_comp

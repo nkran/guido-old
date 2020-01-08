@@ -1,11 +1,11 @@
-                                                                
-                    _|_|_|            _|        _|            
-                  _|        _|    _|        _|_|_|    _|_|    
-                  _|  _|_|  _|    _|  _|  _|    _|  _|    _|  
-                  _|    _|  _|    _|  _|  _|    _|  _|    _|  
-                    _|_|_|    _|_|_|  _|    _|_|_|    _|_|    
-                                                                
-                    
+                    ||||||            ||        ||
+                  ||    ||                      ||
+                  ||        ||    ||  ||    ||||||    ||||
+                  ||  ||||  ||    ||  ||  ||    ||  ||    ||
+                  ||    ||  ||    ||  ||  ||    ||  ||    ||
+                    ||||||    ||||||  ||    ||||||    ||||
+
+
 ## Installation - option 1 (Conda)
 Make sure you have have Conda installed on your computer.
 
@@ -35,36 +35,50 @@ Download ZIP from: https://imperialcollegelondon.box.com/v/guido-agam-data and e
 
 ## Usage
 ```
-usage: guido.py [-h] [--sequence-file SEQUENCE] [--region REGION]
-                [--gene GENE] [--variants VARIANTS]
-                [--feature-type FEATURE_TYPE] [--pam PAM]
-                [--max-flanking MAX_FLANKING_LENGTH]
-                [--min-flanking MIN_FLANKING_LENGTH]
-                [--length-weight LENGTH_WEIGHT] [--n-patterns N_PATTERNS]
-                [--output-folder OUTPUT_FOLDER]
+usage: guido [-h] [--sequence-file SEQUENCE] [--region REGION] [--gene GENE]
+             [--variants VARIATION_STORE] [--conservation CONSERVATION_STORE]
+             [--pam PAM] [--threads N_THREADS]
+             [--max-flanking MAX_FLANKING_LENGTH]
+             [--min-flanking MIN_FLANKING_LENGTH]
+             [--length-weight LENGTH_WEIGHT] [--max-offtargets MAX_OFFTARGETS]
+             [--n-patterns N_PATTERNS] [--disable-mmej [DISABLE_MMEJ]]
+             [--disable-off-targets [DISABLE_OFFTARGETS]]
+             [--output-folder OUTPUT_FOLDER] [--feature-type FEATURE]
+             [--dump DUMP]
+
+Guido is a fashionable gRNA designer, specialised in gene drives.
 
 optional arguments:
   -h, --help            show this help message and exit
-  --sequence-file SEQUENCE, -i SEQUENCE
-                        File with the target sequence (TXT or FASTA).
   --region REGION, -r REGION
                         Region in AgamP4 genome [2L:1530-1590].
   --gene GENE, -G GENE  Genome of interest (AgamP4.7 geneset).
-  --variants VARIANTS, -v VARIANTS
+  --variants VARIATION_STORE, -v VARIATION_STORE
                         VCF file with variants.
-  --feature-type FEATURE_TYPE, -f FEATURE_TYPE
-                        Genomic feature to target.
-  --pam PAM, -P PAM  Protospacer Adjacent Motif (IUPAC code format).
+  --conservation CONSERVATION_STORE, -c CONSERVATION_STORE
+                        Path to Zarr store with conservation data.
+  --pam PAM, -P PAM     Protospacer adjacent motif (IUPAC format)
+  --threads N_THREADS, -t N_THREADS
+                        Number of threads used.
   --max-flanking MAX_FLANKING_LENGTH, -M MAX_FLANKING_LENGTH
                         Max length of flanking region.
   --min-flanking MIN_FLANKING_LENGTH, -m MIN_FLANKING_LENGTH
                         Min length of flanking region.
   --length-weight LENGTH_WEIGHT, -w LENGTH_WEIGHT
                         Length weight - used in scoring.
+  --max-offtargets MAX_OFFTARGETS
+                        Max number of reported offtargets
   --n-patterns N_PATTERNS, -p N_PATTERNS
                         Number of MH patterns used in guide evaluation.
+  --disable-mmej [DISABLE_MMEJ]
+                        Disable MMEJ prediction.
+  --disable-off-targets [DISABLE_OFFTARGETS]
+                        Disable off-targets search.
   --output-folder OUTPUT_FOLDER, -o OUTPUT_FOLDER
                         Output folder.
+  --feature-type FEATURE, -f FEATURE
+                        Type of genomic feature to focus guide search on.
+  --dump DUMP           Dump pickled cut_sites object to the output folder.
 ```
 
 ## Output
