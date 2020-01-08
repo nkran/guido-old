@@ -8,14 +8,8 @@ Region = namedtuple('Region', ['chromosome', 'start', 'end', 'sequence', 'annota
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Microhomology predictor.')
+    parser = argparse.ArgumentParser(description='Guido is a fashionable gRNA designer, specialised in gene drives.')
 
-    parser.add_argument(
-        '--sequence-file',
-        '-i',
-        dest='sequence',
-        help='File with the target sequence (TXT or FASTA).',
-    )
     parser.add_argument(
         '--region',
         '-r',
@@ -72,14 +66,6 @@ def parse_args():
         dest='min_flanking_length',
         help='Min length of flanking region.',
         default=25,
-    )
-    parser.add_argument(
-        '--length-weight',
-        '-w',
-        type=float,
-        dest='length_weight',
-        help='Length weight - used in scoring.',
-        default=20.0,
     )
     parser.add_argument(
         '--max-offtargets',
