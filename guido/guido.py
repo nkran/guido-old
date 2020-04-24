@@ -220,14 +220,16 @@ def main():
         )
 
     if args.region or args.gene:
-        ann_db = allel.gff3_to_dataframe(
-            genome_info['annotation_file'],
-            attributes=['ID', 'Name'],
-            attributes_fill='',
-        )
-        stb = pysam.TabixFile(genome_info['sorted_gz_file'])
-    else:
-        ann_db = None
+        if annotation_file_path is not None:
+            ann_db = allel.gff3_to_dataframe(
+                genome_info['annotation_file'],
+                attributes=['ID', 'Name'],
+                attributes_fill='',
+            )
+            stb = pysam.TabixFile(genome_info['sorted_gz_file'])
+        else:
+            stb = None
+            ann_db = None
 
     if args.region and args.gene:
         logger.info(
@@ -265,6 +267,10 @@ def main():
         '''
         Option -G: get genomic region from a gene name
         '''
+        if annotation_file_path is None:
+            logger.error('Please provide an annotation file in guido-build command (-a) to be able to use gen (-G) argument.')
+            quit()
+
         logger.info('Using AgamP4 reference genome. Gene: {}'.format(args.gene))
 
         try:
