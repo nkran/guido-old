@@ -109,12 +109,12 @@ def main():
         quit()
     else:
         genome_info["genome_name"] = args.genome_name
+        genome_info[
+            "genome_index_path"
+        ] = f"{os.path.dirname(args.genome_file)}/{args.genome_name}"
 
     if args.annotation_file:
         ann_abspath = os.path.abspath(args.annotation_file)
-        genome_info[
-            "genome_index_path"
-        ] = f"{os.path.dirname(args.annotation_file)}/{args.genome_name}"
         if os.path.exists(args.annotation_file):
             supported_ann_ext = [
                 ".gtf",
@@ -132,6 +132,8 @@ def main():
                 "Annotation file does not exist. Check path is entered correctly."
             )
             quit()
+    else:
+        genome_info['annotation_file'] = None
 
     if args.description:
         genome_info["description"] = args.description
@@ -146,18 +148,19 @@ def main():
     # ------------------------------------------------------------
 
     # Build TAB-delimited index (tabix) files
-    logger.info("Building tabix index.")
+    if args.annotation_file:
+        logger.info("Building tabix index.")
 
-    sorted_ann_abspath = ann_path + ".sorted" + ann_ext
-    ann_sort_bgz_cmd = (
-        f"sort -k1,1 -k4,4n {ann_abspath} | bgzip > {sorted_ann_abspath}.gz"
-    )
-    genome_info["sorted_gz_file"] = f"{sorted_ann_abspath}.gz"
-    sort_proc = subprocess.run(ann_sort_bgz_cmd, shell=True)
+        sorted_ann_abspath = ann_path + ".sorted" + ann_ext
+        ann_sort_bgz_cmd = (
+            f"sort -k1,1 -k4,4n {ann_abspath} | bgzip > {sorted_ann_abspath}.gz"
+        )
+        genome_info["sorted_gz_file"] = f"{sorted_ann_abspath}.gz"
+        sort_proc = subprocess.run(ann_sort_bgz_cmd, shell=True)
 
-    tabix_cmd = f"tabix {sorted_ann_abspath}.gz"
-    tabix_proc = subprocess.run(tabix_cmd, stderr=subprocess.PIPE, shell=True)
-    genome_info["tbi_file"] = f"{sorted_ann_abspath}.gz.tbi"
+        tabix_cmd = f"tabix {sorted_ann_abspath}.gz"
+        tabix_proc = subprocess.run(tabix_cmd, stderr=subprocess.PIPE, shell=True)
+        genome_info["tbi_file"] = f"{sorted_ann_abspath}.gz.tbi"
 
     # Build fasta index (fai) files
     logger.info("Building fasta index.")
