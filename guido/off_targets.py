@@ -7,11 +7,9 @@ from io import StringIO
 import guido.log as log
 
 logger = log.createCustomLogger('off-targets')
-ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
-def run_bowtie(cut_sites, max_offtargets, threads):
-    genome_index_path = os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4')
+def run_bowtie(cut_sites, max_offtargets, genome_index_path, threads):
     mismatches = 3
 
     # create temporary file for bowtie input
