@@ -16,7 +16,6 @@ from guido.convar import apply_conservation_variation_score
 from guido.helpers import parse_args, rev_comp, parse_gff_info, Region
 
 logger = log.createCustomLogger('root')
-ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
 def fill_dict(sequence, pams, pam_len, max_flanking_length, region, strand):
@@ -161,8 +160,8 @@ def find_breaks(region, min_flanking_length, max_flanking_length, pam):
     return cut_sites
 
 
-def define_genomic_region(chromosome, start, end, annotation_db=None):
-    genome = Fasta(os.path.join(ROOT_PATH, 'data', 'references', 'AgamP4.fa'))
+def define_genomic_region(chromosome, start, end, genome_file, annotation_db=None):
+    genome = Fasta(genome_file)
     region_seq = genome[chromosome][start:end].seq.upper()
 
     if annotation_db is not None:
@@ -210,16 +209,23 @@ def main():
     # ------------------------------------------------------------
     # Handle input arguments
     # ------------------------------------------------------------
+    if args.genome_info:
+        genome_info = pickle.load(open(args.genome_info, "rb"))
+        genome_index_path = genome_info['genome_index_path']
+        genome_file_path = genome_info['genome_file']
+        annotation_file_path = genome_info['annotation_file']
+    else:
+        logger.error(
+            "Please provide the genome information file destination using -g argument."
+        )
 
     if args.region or args.gene:
         ann_db = allel.gff3_to_dataframe(
-            'guido/data/references/AgamP4.7.gff3.gz',
+            genome_info['annotation_file'],
             attributes=['ID', 'Name'],
             attributes_fill='',
         )
-        stb = pysam.TabixFile(
-            '/home/nkranjc/flash/repos/guido/guido/data/references/AgamP4.12.sorted.gff3.gz'
-        )
+        stb = pysam.TabixFile(genome_info['sorted_gz_file'])
     else:
         ann_db = None
 
@@ -280,7 +286,7 @@ def main():
         )
         if len(overlapping_features) > 0:
             regions = [
-                define_genomic_region(chromosome, start, end, stb)
+                define_genomic_region(chromosome, start, end, genome_file_path, stb)
                 for chromosome, start, end in overlapping_features[
                     ['seqid', 'start', 'end']
                 ].values
@@ -289,7 +295,7 @@ def main():
             logger.error('No feature of this type detected in the provided region.')
             quit()
     else:
-        regions = [define_genomic_region(chromosome, start, end, stb)]
+        regions = [define_genomic_region(chromosome, start, end, genome_file_path, stb)]
 
     if not args.output_folder:
         logger.error('No output folder selected. Please define it by using -o option.')
@@ -331,7 +337,7 @@ def main():
         if not args.disable_offtargets:
             logger.info('Finding offtargets ...')
             cut_sites, targets_df = run_bowtie(
-                cut_sites, args.max_offtargets, args.n_threads
+                cut_sites, args.max_offtargets, genome_index_path, args.n_threads
             )
 
         pool.close()

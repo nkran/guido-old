@@ -133,6 +133,12 @@ def parse_args():
         help="Dump pickled cut_sites object to the output folder.",
         default=False,
     )
+    parser.add_argument(
+        '--genome-info',
+        '-g',
+        dest='genome_info',
+        help='Genome information pickle file created using guido-build function.'
+    )
 
     return parser.parse_args()
 
