@@ -209,15 +209,31 @@ def main():
     # ------------------------------------------------------------
     # Handle input arguments
     # ------------------------------------------------------------
-    if args.genome_info:
+    if not args.region and not args.sequence and not args.gene:
+        logger.error(
+            'Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.'
+        )
+        quit()
+
+    if args.region and args.gene:
+        logger.info(
+            'Please use only one option for genomic region selection. Use -r or -G.'
+        )
+        quit()
+
+    if not args.genome_info:
+        logger.error(
+            "Please provide the genome information file destination using -g argument."
+        )
+    else:
         genome_info = pickle.load(open(args.genome_info, "rb"))
         genome_index_path = genome_info['genome_index_path']
         genome_file_path = genome_info['genome_file']
         annotation_file_path = genome_info['annotation_file']
-    else:
-        logger.error(
-            "Please provide the genome information file destination using -g argument."
-        )
+        if annotation_file_path is None:
+            if args.gene or args.feature:
+                logger.error('Please provide an Annotation file while using guido-build if you wish to use Gene and/or Feature arguments.')
+                quit()
 
     if args.region or args.gene:
         if annotation_file_path is not None:
@@ -231,26 +247,14 @@ def main():
             stb = None
             ann_db = None
 
-    if args.region and args.gene:
-        logger.info(
-            'Please use only one option for genomic region selection. Use -r or -G.'
-        )
-        quit()
-
     if args.feature and len(ann_db) > 0:
         feature_types = ann_db['type'].unique()
         if args.feature not in feature_types:
             logger.error(
-                'No feature of this type detected. Features present in current \
+                f'No feature of this type detected. Features present in current \
                  database are the following: {feature_types}'
             )
             quit()
-
-    if not args.region and not args.sequence and not args.gene:
-        logger.error(
-            'Please define the region of interest (-r) or provide the sequence (-i). Use -h for help.'
-        )
-        quit()
 
     if args.region:
         '''
@@ -267,10 +271,6 @@ def main():
         '''
         Option -G: get genomic region from a gene name
         '''
-        if annotation_file_path is None:
-            logger.error('Please provide an annotation file in guido-build command (-a) to be able to use gen (-G) argument.')
-            quit()
-
         logger.info('Using AgamP4 reference genome. Gene: {}'.format(args.gene))
 
         try:
