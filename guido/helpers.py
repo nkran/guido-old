@@ -189,9 +189,14 @@ def geneset_to_pandas(geneset):
 
 
 def parse_gff_info(feature, info):
-    if feature in ['mRNA', 'CDS', 'exon']:
-        props = info.split(';')
-        info_dict = dict(s.split('=') for s in props)
+    if feature in ['mRNA', 'CDS', 'exon', 'transcript']:
+        props = info.replace(' ','').split(';')
+        try:
+            # GFF3 annotation attribute split
+            info_dict = dict(s.split('=') for s in props)
+        except:
+            # GTF annotation attribute split
+            info_dict = dict(s[:-1].split('"') for s in props if len(s) > 0)
     else:
         info_dict = {}
 

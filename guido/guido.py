@@ -3,7 +3,7 @@ import re
 import pickle
 import itertools
 
-import allel
+import pyranges
 import multiprocessing as mp
 import pysam
 from pyfaidx import Fasta
@@ -76,6 +76,10 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region, strand):
                         label = f"{ftype}|{fdict['Name']}"
                     elif 'ID' in fdict.keys():
                         label = f"{ftype}|{fdict['ID']}"
+                    elif 'exon_number' in fdict.keys():
+                        label = f"{ftype}|{fdict['transcript_id'] + '-E' + fdict['exon_number']}"
+                    elif 'transcript_id' in fdict.keys():
+                        label = f"mRNA|{fdict['transcript_id']}"
                     else:
                         label = ftype
 
@@ -230,6 +234,7 @@ def main():
         genome_index_path = genome_info['genome_index_path']
         genome_file_path = genome_info['genome_file']
         annotation_file_path = genome_info['annotation_file']
+        ann_ext = genome_info['ann_ext']
         if annotation_file_path is None:
             if args.gene or args.feature:
                 logger.error('Please provide an Annotation file while using guido-build if you wish to use Gene and/or Feature arguments.')
@@ -237,18 +242,19 @@ def main():
 
     if args.region or args.gene:
         if annotation_file_path is not None:
-            ann_db = allel.gff3_to_dataframe(
-                genome_info['annotation_file'],
-                attributes=['ID', 'Name'],
-                attributes_fill='',
-            )
+            if ann_ext in ['.gff3']:
+                ann_db = pyranges.read_gff3(genome_info['annotation_file'], as_df=True)
+                ann_db.rename(columns={'Name':'Exon'}, inplace=True) # TODO - Keep only number after the final 'E' as exon_number
+            elif ann_ext in ['.gtf']:
+                ann_db = pyranges.read_gtf(genome_info['annotation_file'], as_df=True)
+                ann_db.rename(columns={'gene_id':'ID','exon_number':'Exon'}, inplace=True)
             stb = pysam.TabixFile(genome_info['sorted_gz_file'])
         else:
             stb = None
             ann_db = None
 
     if args.feature and len(ann_db) > 0:
-        feature_types = ann_db['type'].unique()
+        feature_types = ann_db['Feature'].unique()
         if args.feature not in feature_types:
             logger.error(
                 f'No feature of this type detected. Features present in current \
@@ -274,27 +280,27 @@ def main():
         logger.info('Using AgamP4 reference genome. Gene: {}'.format(args.gene))
 
         try:
-            gene = ann_db.query(f'ID == {repr(args.gene)}')
+            gene = ann_db.query(f'ID == {repr(args.gene)} & Feature == "gene"')
         except Exception:
             logger.error('Gene not found: {}'.format(args.gene))
             quit()
 
-        chromosome = gene.seqid.values[0]
-        start = int(gene.start)
-        end = int(gene.end)
+        chromosome = gene.Chromosome.values[0]
+        start = int(gene.Start)
+        end = int(gene.End)
 
     if args.feature:
         overlapping_features = ann_db.query(
-            f'(type == {repr(args.feature)}) & \
-                                                (seqid == {repr(chromosome)}) &  \
-                                                (((start >= {start}) & (start <= {end})) | \
-                                                ((end >= {start}) & (end <= {end})))'
+            f'(Feature == {repr(args.feature)}) & \
+                                                (Chromosome == {repr(chromosome)}) &  \
+                                                (((Start >= {start}) & (Start <= {end})) | \
+                                                ((End >= {start}) & (End <= {end})))'
         )
         if len(overlapping_features) > 0:
             regions = [
                 define_genomic_region(chromosome, start, end, genome_file_path, stb)
                 for chromosome, start, end in overlapping_features[
-                    ['seqid', 'start', 'end']
+                    ['Chromosome', 'Start', 'End']
                 ].values
             ]
         else:
