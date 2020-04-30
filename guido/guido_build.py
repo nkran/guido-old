@@ -45,6 +45,15 @@ def parse_args():
         type=str,
         help="Description of genome.",
     )
+    parser.add_argument(
+        "--disable-bowtie-build",
+        dest="disable_bowtie_build",
+        type=bool,
+        nargs='?',
+        const=True,
+        help="Disable bowtie build command.",
+        default=False
+    )
 
     return parser.parse_args()
 
@@ -121,7 +130,7 @@ def main():
             supported_ann_ext = [
                 ".gtf",
                 ".gff3",
-            ]  # TODO - implement '.gz' format handling
+            ]
             ann_path, ann_ext = os.path.splitext(ann_abspath)
             if ann_ext in supported_ann_ext:
                 genome_info["annotation_file"] = ann_abspath
@@ -171,11 +180,12 @@ def main():
     genome_info["fai_file"] = f"{genome_file_abspath}.fai"
 
     # Build bowtie index files
-    logger.info("Building bowtie index. This will take a few minutes ...")
-    bowtie_index_command = f"bowtie-build {genome_file_abspath} {os.path.join(genome_file_dirname, args.genome_name)} --threads {args.n_threads}"
-    bowtie_index_proc = subprocess.run(
-        bowtie_index_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
-    )
+    if not args.disable_bowtie_build:
+        logger.info("Building bowtie index. This will take a few minutes ...")
+        bowtie_index_command = f"bowtie-build {genome_file_abspath} {os.path.join(genome_file_dirname, args.genome_name)} --threads {args.n_threads}"
+        bowtie_index_proc = subprocess.run(
+            bowtie_index_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
+        )
 
     # Pickle genome_info dictionary
     with open(os.path.join(genome_file_dirname, "genome_info.pickle"), "wb") as f:
