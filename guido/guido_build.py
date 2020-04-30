@@ -71,6 +71,7 @@ def main():
         "description": "",
         "genome_file": "",
         "annotation_file": "",
+        "ann_ext": "",
         "sorted_gz_file": "",
         "fai_file": "",
         "tbi_file": "",
@@ -90,7 +91,8 @@ def main():
             supported_seq_ext = [
                 ".fa",
                 ".fasta",
-            ]  # TODO - check if the following formats are also accepted ['.fna', '.ffn', '.faa', '.frn']
+                ".fna"
+            ]  # TODO - check if the following formats are also accepted ['.ffn', '.faa', '.frn']
             gen_seq_ext = os.path.splitext(args.genome_file)[1]
             if gen_seq_ext in supported_seq_ext:
                 genome_file_abspath = os.path.abspath(args.genome_file)
@@ -123,6 +125,7 @@ def main():
             ann_path, ann_ext = os.path.splitext(ann_abspath)
             if ann_ext in supported_ann_ext:
                 genome_info["annotation_file"] = ann_abspath
+                genome_info['ann_ext'] = ann_ext
             else:
                 logger.error(
                     "Annotation file format must be either in either GTF or GFF3 format."

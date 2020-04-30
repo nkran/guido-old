@@ -8,6 +8,7 @@ h5py==2.8.0
 numpy==1.14.3
 pandas==0.23.0
 pyfaidx==0.5.6
+pyranges==0.0.77
 PyVCF==0.6.8
 zarr==2.2.0
 requests==2.21.0
