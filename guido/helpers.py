@@ -172,22 +172,6 @@ def parse_MD_tag(sequence, md_tag):
     return string
 
 
-def geneset_to_pandas(geneset):
-    """
-    Life is a bit easier when a geneset is a pandas DataFrame.
-    """
-    items = []
-
-    for n in geneset.dtype.names:
-        v = geneset[n]
-        # convert bytes columns to unicode (which pandas then converts to object)
-        if v.dtype.kind == 'S':
-            v = v.astype('U')
-        items.append((n, v))
-
-    return pandas.DataFrame.from_dict(dict(items))
-
-
 def parse_gff_info(feature, info):
     if feature in ['mRNA', 'CDS', 'exon', 'transcript']:
         props = info.replace(' ','').split(';')
