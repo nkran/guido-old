@@ -188,5 +188,5 @@ def main():
         )
 
     # Pickle genome_info dictionary
-    with open(os.path.join(genome_file_dirname, "genome_info.pickle"), "wb") as f:
+    with open(os.path.join(genome_file_dirname, f"{args.genome_name}.guido"), "wb") as f:
         pickle.dump(genome_info, f, protocol=pickle.HIGHEST_PROTOCOL)
