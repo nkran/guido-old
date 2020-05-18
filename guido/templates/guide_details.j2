@@ -7,7 +7,7 @@ MMEJ Score: {{ '%0.2f' % cut_site.complete_score }} MMEJ sum score: {{ '%0.2f' %
 
 Annotations:
 {% if cut_site.annotation|length > 0 -%}
-{% for a in cut_site.annotation -%}
+{% for a in cut_site.annotation_strings -%}
     - {{a}}
 {% endfor -%}
 {% else -%}

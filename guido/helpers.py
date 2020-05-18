@@ -170,18 +170,3 @@ def parse_MD_tag(sequence, md_tag):
         string += base
 
     return string
-
-
-def parse_gff_info(feature, info):
-    if feature in ['mRNA', 'CDS', 'exon', 'transcript']:
-        props = info.replace(' ','').split(';')
-        try:
-            # GFF3 annotation attribute split
-            info_dict = dict(s.split('=') for s in props)
-        except:
-            # GTF annotation attribute split
-            info_dict = dict(s[:-1].split('"') for s in props if len(s) > 0)
-    else:
-        info_dict = {}
-
-    return feature, info_dict

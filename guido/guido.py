@@ -5,7 +5,6 @@ import itertools
 
 import pyranges
 import multiprocessing as mp
-import pysam
 from pyfaidx import Fasta
 
 import guido.log as log
@@ -13,7 +12,7 @@ from guido.mmej import simulate_end_joining
 from guido.output import render_output
 from guido.off_targets import run_bowtie
 from guido.convar import apply_conservation_variation_score
-from guido.helpers import parse_args, rev_comp, parse_gff_info, Region
+from guido.helpers import parse_args, rev_comp, Region
 
 logger = log.createCustomLogger('root')
 
@@ -64,26 +63,7 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region, strand):
 
         guide_annotations = []
         if annotation is not None:
-            for a in annotation:
-                ftype, fdict = parse_gff_info(feature=a[2], info=a[8])
-                _, fstart, fend = a[0], a[3], a[4]
-                if (
-                    ftype not in ['chromosome']
-                    and absolute_cut_pos >= int(fstart)
-                    and absolute_cut_pos <= int(fend)
-                ):
-                    if 'Name' in fdict.keys():
-                        label = f"{ftype}|{fdict['Name']}"
-                    elif 'ID' in fdict.keys():
-                        label = f"{ftype}|{fdict['ID']}"
-                    elif 'exon_number' in fdict.keys():
-                        label = f"{ftype}|{fdict['transcript_id'] + '-E' + fdict['exon_number']}"
-                    elif 'transcript_id' in fdict.keys():
-                        label = f"mRNA|{fdict['transcript_id']}"
-                    else:
-                        label = ftype
-
-                    guide_annotations.append(label)
+            guide_annotations = annotation.query(f'((Start <= {absolute_cut_pos}) & (End >= {absolute_cut_pos}))')
 
         # define dict structure -------------------------------
         cut_dict = {
@@ -95,7 +75,7 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region, strand):
             'guide': sequence[pam_loc-20:pam_loc+pam_len],
             'guide_loc': guide_location,
             'strand': strand,
-            'annotation': set(guide_annotations),
+            'annotation': guide_annotations,
             'mmej_patterns': [],
             'complete_score': 0,
             'sum_score': 0,
@@ -169,12 +149,10 @@ def define_genomic_region(chromosome, start, end, genome_file, annotation_db=Non
     region_seq = genome[chromosome][start:end].seq.upper()
 
     if annotation_db is not None:
-        annotation = [
-            tuple(a)
-            for a in annotation_db.fetch(
-                chromosome, start - 1, end + 1, parser=pysam.asTuple()
-            )
-        ]
+        annotation = annotation_db.query(
+            f'(Chromosome == {repr(chromosome)}) &  \
+              (((Start >= {start - 1}) & (Start <= {end + 1})) | \
+              ((End >= {start - 1}) & (End <= {end + 1})))')
     else:
         annotation = None
 
@@ -248,17 +226,14 @@ def main():
             elif ann_ext in ['.gtf']:
                 ann_db = pyranges.read_gtf(genome_info['annotation_file'], as_df=True)
                 ann_db.rename(columns={'gene_id':'ID','exon_number':'Exon'}, inplace=True)
-            stb = pysam.TabixFile(genome_info['sorted_gz_file'])
         else:
-            stb = None
             ann_db = None
 
     if args.feature and len(ann_db) > 0:
         feature_types = ann_db['Feature'].unique()
         if args.feature not in feature_types:
             logger.error(
-                f'No feature of this type detected. Features present in current \
-                 database are the following: {feature_types}'
+                f'No feature of this type detected. Features present in current database are the following: {list(feature_types)}'
             )
             quit()
 
@@ -298,7 +273,7 @@ def main():
         )
         if len(overlapping_features) > 0:
             regions = [
-                define_genomic_region(chromosome, start, end, genome_file_path, stb)
+                define_genomic_region(chromosome, start, end, genome_file_path, ann_db)
                 for chromosome, start, end in overlapping_features[
                     ['Chromosome', 'Start', 'End']
                 ].values
@@ -307,7 +282,7 @@ def main():
             logger.error('No feature of this type detected in the provided region.')
             quit()
     else:
-        regions = [define_genomic_region(chromosome, start, end, genome_file_path, stb)]
+        regions = [define_genomic_region(chromosome, start, end, genome_file_path, ann_db)]
 
     if not args.output_folder:
         logger.error('No output folder selected. Please define it by using -o option.')
