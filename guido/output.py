@@ -16,10 +16,33 @@ file_loader = FileSystemLoader(os.path.join(ROOT_PATH, 'templates'))
 env = Environment(loader=file_loader)
 env.filters['rev_comp'] = rev_comp
 
+def prepare_annotations(cut_sites):
+    
+    updated_cut_sites = []
+
+    for cut_site in cut_sites:
+        annotation_strings = []
+        for ix, a in cut_site['annotation'].iterrows():
+            if a['Feature'] == 'exon':
+                label = '{}-E{}'.format(a['transcript_id'], a['Exon'])
+            elif a['Feature'] in ['transcript', 'exon', 'CDS', 'start_codon', 'stop_codon', 'five_prime_utr', 'three_prime_utr']:
+                label = '{}-{}'.format(a['Feature'], a['transcript_id'])
+            else:
+                label = '{}-{}'.format(a['Feature'], a['ID'])
+            annotation_strings.append(label)
+
+        cut_site['annotation_string'] = ' '.join(annotation_strings)
+        cut_site['annotation_strings'] = annotation_strings
+
+        updated_cut_sites.append(cut_site)
+
+    return updated_cut_sites
+
 
 def render_output(cut_sites, output_folder, targets_df=None):
 
-    cs_df = pd.DataFrame(cut_sites)
+    cut_sites = prepare_annotations(cut_sites)
+    cs_df = pd.DataFrame(cut_sites).sort_values('absolute_cut_pos')
 
     cs_df[['chrom', 'start', 'end']] = pd.DataFrame(cs_df['guide_loc'].values.tolist())
     cs_df['variants'] = pd.DataFrame(cs_df['variants'])
@@ -38,6 +61,7 @@ def render_output(cut_sites, output_folder, targets_df=None):
             'sum_score',
             'offtargets_str',
             'offtargets_n',
+            'annotation_string'
         ]
     ]
     output = output.sort_values(by=['chrom', 'start'])
