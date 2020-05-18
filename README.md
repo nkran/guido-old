@@ -11,7 +11,7 @@ Make sure you have have Conda installed on your computer.
 
 ### Create conda environment
 ```
-conda env create -f environment.yml
+conda env create -n guido -f requirements.txt
 ```
 ### Environment with Guido
 After creating the environment you can activate it by using:
