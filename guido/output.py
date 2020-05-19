@@ -16,22 +16,45 @@ file_loader = FileSystemLoader(os.path.join(ROOT_PATH, 'templates'))
 env = Environment(loader=file_loader)
 env.filters['rev_comp'] = rev_comp
 
-def prepare_annotations(cut_sites):
+def prepare_annotations(cut_sites, ann_ext):
     
     updated_cut_sites = []
+    feature_dict = [
+        'transcript',
+        'CDS',
+        'start_codon',
+        'stop_codon',
+        'five_prime_utr',
+        'five_prime_UTR',
+        'three_prime_utr',
+        'three_prime_UTR'
+    ]
 
     for cut_site in cut_sites:
         annotation_strings = []
         for ix, a in cut_site['annotation'].iterrows():
-            if a['Feature'] == 'exon':
-                label = '{}-E{}'.format(a['transcript_id'], a['Exon'])
-            elif a['Feature'] in ['transcript', 'exon', 'CDS', 'start_codon', 'stop_codon', 'five_prime_utr', 'three_prime_utr']:
-                label = '{}-{}'.format(a['Feature'], a['transcript_id'])
-            else:
-                label = '{}-{}'.format(a['Feature'], a['ID'])
+
+            if ann_ext in ['.gff3']:
+                if a['Feature'] == 'gene':
+                    label = 'gene-{}'.format(a['ID'])
+                elif a['Feature'] == 'exon':
+                    label = a['Exon']
+                elif a['Feature'] == 'mRNA':
+                    label = 'transcript-{}'.format(a['ID'])
+                elif a['Feature'] in feature_dict:
+                    label = '{}-{}'.format(a['Feature'], a['Parent'])
+
+            elif ann_ext in ['.gtf']:
+                if a['Feature'] == 'gene':
+                    label = 'gene-{}'.format(a['ID'])
+                elif a['Feature'] == 'exon':
+                    label = '{}-E{}'.format(a['transcript_id'], a['Exon'])
+                elif a['Feature'] in feature_dict:
+                    label = '{}-{}'.format(a['Feature'], a['transcript_id'])
+
             annotation_strings.append(label)
 
-        cut_site['annotation_string'] = ' '.join(annotation_strings)
+        cut_site['annotation_string'] = ' '.join(annotation_strings) # gff3 file has every annotation twice -> consider using set(annotation_strings) although it loses previous intuitive order
         cut_site['annotation_strings'] = annotation_strings
 
         updated_cut_sites.append(cut_site)
@@ -39,9 +62,10 @@ def prepare_annotations(cut_sites):
     return updated_cut_sites
 
 
-def render_output(cut_sites, output_folder, targets_df=None):
+def render_output(cut_sites, output_folder, ann_ext, targets_df=None):
 
-    cut_sites = prepare_annotations(cut_sites)
+    if ann_ext is not None:
+        cut_sites = prepare_annotations(cut_sites, ann_ext)
     cs_df = pd.DataFrame(cut_sites).sort_values('absolute_cut_pos')
 
     cs_df[['chrom', 'start', 'end']] = pd.DataFrame(cs_df['guide_loc'].values.tolist())
@@ -61,9 +85,10 @@ def render_output(cut_sites, output_folder, targets_df=None):
             'sum_score',
             'offtargets_str',
             'offtargets_n',
-            'annotation_string'
         ]
     ]
+    if ann_ext is not None:
+        output.insert(len(output.columns), 'annotation_string', cs_df['annotation_string'])
     output = output.sort_values(by=['chrom', 'start'])
     output.to_csv(os.path.join(output_folder, 'guides_list.csv'), index=False)
 
