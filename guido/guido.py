@@ -222,11 +222,12 @@ def main():
         if annotation_file_path is not None:
             if ann_ext in ['.gff3']:
                 ann_db = pyranges.read_gff3(genome_info['annotation_file'], as_df=True)
-                ann_db.rename(columns={'Name':'Exon'}, inplace=True) # TODO - Keep only number after the final 'E' as exon_number
+                ann_db.rename(columns={'Name':'Exon'}, inplace=True)
             elif ann_ext in ['.gtf']:
                 ann_db = pyranges.read_gtf(genome_info['annotation_file'], as_df=True)
                 ann_db.rename(columns={'gene_id':'ID','exon_number':'Exon'}, inplace=True)
         else:
+            ann_ext = None
             ann_db = None
 
     if args.feature and len(ann_db) > 0:
@@ -334,9 +335,9 @@ def main():
             os.makedirs(args.output_folder)
 
         if not args.disable_offtargets:
-            render_output(cut_sites, args.output_folder, targets_df=targets_df)
+            render_output(cut_sites, args.output_folder, ann_ext, targets_df=targets_df)
         else:
-            render_output(cut_sites, args.output_folder)
+            render_output(cut_sites, args.output_folder, ann_ext)
 
         if args.dump:
             with open(os.path.join(args.output_folder, 'guides_all.pickle'), 'wb') as f:
