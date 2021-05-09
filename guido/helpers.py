@@ -170,3 +170,7 @@ def parse_MD_tag(sequence, md_tag):
         string += base
 
     return string
+
+
+def parse_oof_deletions(mmej_patterns):
+    return '|'.join([p for p in mmej_patterns['frame_shift']])

@@ -2,11 +2,13 @@ import os
 import csv
 import itertools
 import pandas as pd
+import pickle
 
 from math import trunc
 from jinja2 import Environment, FileSystemLoader
 
-from guido.helpers import parse_MD_tag, rev_comp
+from guido.helpers import parse_MD_tag, rev_comp, parse_oof_deletions
+from guido.ranking import rank_guides
 import guido.log as log
 
 logger = log.createCustomLogger('output')
@@ -17,7 +19,6 @@ env = Environment(loader=file_loader)
 env.filters['rev_comp'] = rev_comp
 
 def prepare_annotations(cut_sites, ann_ext):
-    
     updated_cut_sites = []
     feature_dict = [
         'transcript',
@@ -51,7 +52,8 @@ def prepare_annotations(cut_sites, ann_ext):
                     label = '{}-{}'.format(a['Feature'], a['transcript_id'])
             annotation_strings.append(label)
 
-        cut_site['annotation_string'] = ' '.join(annotation_strings) # gff3 file has every annotation twice -> consider using set(annotation_strings) although it loses previous intuitive order
+        # gff3 file has every annotation twice -> consider using set(annotation_strings) although it loses previous intuitive order
+        cut_site['annotation_string'] = ' '.join(annotation_strings) 
         cut_site['annotation_strings'] = annotation_strings
 
         updated_cut_sites.append(cut_site)
@@ -67,6 +69,12 @@ def render_output(cut_sites, output_folder, ann_ext, targets_df=None):
 
     cs_df[['chrom', 'start', 'end']] = pd.DataFrame(cs_df['guide_loc'].values.tolist())
     cs_df['variants'] = pd.DataFrame(cs_df['variants'])
+    try:
+        cs_df['mmej_oof'] = cs_df.apply(lambda x: parse_oof_deletions(x.mmej_patterns), axis=1)
+    except:
+        cs_df['mmej_oof'] = None
+
+    cs_df = rank_guides(cs_df)
 
     output = cs_df[
         [
@@ -78,16 +86,20 @@ def render_output(cut_sites, output_folder, ann_ext, targets_df=None):
             'guide',
             'cons_score',
             'variants_n',
-            'complete_score',
             'sum_score',
+            'complete_score',
+            'mmej_oof',
             'offtargets_str',
             'offtargets_n',
+            'offtargets_sum_score',
+            'weighted_sum',
+            'rank'
         ]
     ]
     if ann_ext is not None:
         output.insert(len(output.columns), 'annotation_string', cs_df['annotation_string'])
     output = output.sort_values(by=['chrom', 'start'])
-    output.to_csv(os.path.join(output_folder, 'guides_list.csv'), index=False)
+    output.to_csv(os.path.join(output_folder, 'guides_list.csv'), sep='\t', index=False)
 
     if targets_df is not None:
         targets_df['diff'] = targets_df.apply(
@@ -114,6 +126,12 @@ def render_output(cut_sites, output_folder, ann_ext, targets_df=None):
     output_details = template.render(
         cut_sites=cut_sites, targets_grp=targets_grp, rev_comp=rev_comp
     )
+
+    # with open(os.path.join(output_folder, 'targets_all.pickle'), 'wb') as p:
+    #     pickle.dump(targets_grp, p)
+
+    with open(os.path.join(output_folder, 'cut_sites_all.pickle'), 'wb') as p:
+        pickle.dump(cut_sites, p)
 
     with open(os.path.join(output_folder, 'guides_list_detailed.txt'), 'w') as f:
         f.write(output_details)

@@ -2,6 +2,7 @@ import os
 import subprocess
 import tempfile
 import pandas as pd
+import numpy as np
 from io import StringIO
 
 import guido.log as log
@@ -30,8 +31,11 @@ def run_bowtie(cut_sites, max_offtargets, genome_index_path, threads):
         )
         temp.flush()
         # run bowtie alignment
-        bowtie_command = 'bowtie -p {} -v {} --sam --sam-nohead -k {} {} -f {}'.format(
-            threads, mismatches, max_offtargets, genome_index_path, temp.name
+        # bowtie_command = 'bowtie -p {} -v {} --sam --sam-nohead -k {} {} -f {}'.format(
+        #     threads, mismatches, max_offtargets, genome_index_path, temp.name
+        # )
+        bowtie_command = 'bowtie -p {} -v {} --sam --sam-nohead -a {} -f {}'.format(
+            threads, mismatches, genome_index_path, temp.name
         )
         rproc = subprocess.Popen(
             bowtie_command.split(),
@@ -84,10 +88,17 @@ def run_bowtie(cut_sites, max_offtargets, genome_index_path, threads):
     for ix, x in mismatches_count.iterrows():
         i = int(x.id)
         counts = x[['0', '1', '2', '3']].to_dict()
+        
+        score_matrix = np.array([5, 3, 2, 1])
+        count_values = np.array(list(counts.values()))
+
+        cut_sites[i]['offtargets_sum_score'] = np.sum(score_matrix * count_values)
         cut_sites[i]['mm'] = counts
         cut_sites[i]['offtargets_str'] = '{:0.0f}|{:0.0f}|{:0.0f}|{:0.0f}'.format(
             *counts.values()
         )
         cut_sites[i]['offtargets_n'] = sum(counts.values())
+
+        
 
     return cut_sites, targets

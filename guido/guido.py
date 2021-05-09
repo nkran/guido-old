@@ -67,6 +67,7 @@ def fill_dict(sequence, pams, pam_len, max_flanking_length, region, strand):
 
         # define dict structure -------------------------------
         cut_dict = {
+            'pam_iupac': args.pam,
             'pam': sequence[pam_loc:pam_loc+pam_len],
             'absolute_cut_pos': absolute_cut_pos,
             'relative_cut_pos': relative_cut_pos,
@@ -182,9 +183,9 @@ def main():
 
     print(ascii_header)
     logger.info("Let's dance!")
-
+    
+    global args
     args = parse_args()
-
     max_flanking_length = args.max_flanking_length
     min_flanking_length = args.min_flanking_length
 
@@ -333,7 +334,7 @@ def main():
         logger.info('Preparing output files ...')
         if not os.path.exists(args.output_folder):
             os.makedirs(args.output_folder)
-
+        
         if not args.disable_offtargets:
             render_output(cut_sites, args.output_folder, ann_ext, targets_df=targets_df)
         else:
